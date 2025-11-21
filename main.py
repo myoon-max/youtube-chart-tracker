@@ -20,7 +20,7 @@ TARGET_URLS = {
     "KR_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/kr/RightNow",
     "US_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/us/RightNow",
     
-    # [원복 대상] 6개 차트: HTML 숨겨진 태그(hidden) 정밀 타격
+    # [수정됨] 6개 차트: HTML 숨겨진 태그(hidden) 정밀 타격
     "KR_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/daily",
     "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "US_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/daily",
@@ -28,7 +28,7 @@ TARGET_URLS = {
     "KR_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/kr/weekly",
     "US_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/us/weekly",
     
-    # [쇼츠] 딥다이브
+    # [쇼츠] 딥다이브 (ID 추출 로직 강화됨)
     "KR_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/kr/daily",
     "US_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/us/daily"
 }
@@ -52,7 +52,7 @@ def parse_count_strict(text):
         return int(val * multiplier)
     except: return 0
 
-# ================= API 조회 (Trending 전용) =================
+# ================= API 조회 (Trending 전용 - 건드리지 않음) =================
 def get_views_from_api(video_ids):
     if not video_ids: return {}
     url = "https://www.googleapis.com/youtube/v3/videos"
@@ -70,20 +70,15 @@ def get_views_from_api(video_ids):
         except: pass
     return stats_map
 
-# ================= 쇼츠 개수 딥다이브 (수정됨) =================
+# ================= 쇼츠 개수 딥다이브 =================
 def get_shorts_count_deep(driver, video_id):
     if not video_id: return 0
     url = f"https://www.youtube.com/source/{video_id}/shorts"
     try:
         driver.get(url)
-        # 로딩 대기 시간 약간 증가 (0 방지)
         time.sleep(2) 
         
-        # body 전체 텍스트에서 패턴 검색
         body_text = driver.find_element(By.TAG_NAME, "body").text
-        
-        # 패턴: "82K shorts" 또는 "1.5M videos" (대소문자 무시)
-        # 어떤 경우는 그냥 숫자만 뜰 수도 있어서 유연하게 대처
         match = re.search(r'([\d,.]+[KMB]?)\s*(shorts|videos)', body_text, re.IGNORECASE)
         if match:
             return parse_count_strict(match.group(1))
@@ -135,40 +130,41 @@ def scrape_chart(driver, chart_name, url):
             if not artist_tag: artist_tag = row.find('div', class_='subtitle')
             if artist_tag: artist = artist_tag.get_text(strip=True)
             
-            img = row.find('img')
+            # [수정 1] Video ID 추출 로직 강화 (Regex 사용)
+            # 기존 split 방식은 webp 이미지나 형식이 다르면 실패함. 정규식으로 /vi/ 뒤의 ID만 쏙 뽑아냄.
             vid = ""
-            if img and 'src' in img.attrs and '/vi/' in img['src']:
-                vid = img['src'].split('/vi/')[1].split('/')[0]
+            img = row.find('img')
+            if img and 'src' in img.attrs:
+                src = img['src']
+                # /vi/ 또는 /vi_webp/ 뒤에 오는 11자리 ID 추출
+                match = re.search(r'/vi(?:_webp)?/([a-zA-Z0-9_-]+)/', src)
+                if match:
+                    vid = match.group(1)
             
             final_views = 0
             
-            # [A] Trending: API 사용 (0으로 둠 -> 후처리)
+            # [A] Trending: API 사용 (건드리지 않음)
             if is_trending:
                 pass
 
-            # [B] Shorts: 딥다이브 사용 (0으로 둠 -> 후처리)
+            # [B] Shorts: 딥다이브 사용 (Video ID만 있으면 됨)
             elif is_shorts:
                 pass
 
-            # [C] MV / Songs (6개 차트): HTML 태그 정밀 타격 (원복됨)
+            # [C] MV / Songs (6개 차트): 님이 발견한 Hidden 태그 사용
             else:
-                # 1순위: 님이 찾은 그 숨겨진 태그 (tablet-non-displayed-metric)
-                # Top Songs나 Daily MV의 '콤마 숫자'가 여기 들어있음
-                hidden_metric = row.select_one('.tablet-non-displayed-metric')
-                
-                # 2순위: 일반 views (보이는 숫자)
-                views_div = row.find('div', class_='views')
-                if not views_div: views_div = row.find('div', class_='metric')
-                
-                found_text = ""
+                # 님께서 찾으신 class="tablet-non-displayed-metric" 태그를 정확히 조준합니다.
+                hidden_metric = row.find('div', class_='tablet-non-displayed-metric')
                 
                 if hidden_metric:
-                    found_text = hidden_metric.get_text(strip=True)
-                elif views_div:
-                    found_text = views_div.get_text(strip=True)
-                
-                # 추출한 텍스트만 파싱 (행 전체 텍스트 X -> 2025 오류 해결)
-                final_views = parse_count_strict(found_text)
+                    raw_text = hidden_metric.get_text(strip=True) # 예: "292,600"
+                    final_views = parse_count_strict(raw_text)
+                else:
+                    # 비상용 fallback (기존 로직)
+                    views_div = row.find('div', class_='views')
+                    if not views_div: views_div = row.find('div', class_='metric')
+                    if views_div:
+                        final_views = parse_count_strict(views_div.get_text(strip=True))
 
             data_list.append({
                 "Date": today,
