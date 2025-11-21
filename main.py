@@ -2,7 +2,7 @@ import os
 import json
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
@@ -15,25 +15,25 @@ import re
 YOUTUBE_API_KEY = "AIzaSyDFFZNYygA85qp5p99qUG2Mh8Kl5qoLip4"
 
 TARGET_URLS = {
-    # 기존 차트
-    "KR_Daily_Trending": "https://charts.youtube.com/charts/Trending/kr/global",
+    # 요청하신 URL로 전면 교체 완료
+    "KR_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/kr/RightNow",
     "KR_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/daily",
     "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "KR_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/kr/weekly",
-    "US_Daily_Trending": "https://charts.youtube.com/charts/Trending/us/global",
+    "US_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/us/RightNow",
     "US_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/daily",
     "US_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/weekly",
     "US_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/us/weekly",
-    
-    # [신규 추가] 쇼츠 차트
     "KR_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/kr/daily",
     "US_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/us/daily"
 }
 
-# ================= 숫자 변환기 (1.2M -> 1200000) =================
+# ================= 숫자 변환기 (콤마 숫자 완벽 지원) =================
 def parse_view_count(text):
     if not text: return 0
-    clean_text = text.lower().replace('views', '').replace('조회수', '').replace('shorts', '').strip()
+    # 공백 및 불필요한 문자 제거
+    clean_text = text.lower().replace('views', '').replace('weekly', '').strip()
+    
     try:
         multiplier = 1
         if 'm' in clean_text:
@@ -46,7 +46,13 @@ def parse_view_count(text):
             multiplier = 1_000_000_000
             clean_text = clean_text.replace('b', '')
             
-        return int(float(clean_text.replace(',', '')) * multiplier)
+        # 숫자와 점(.)만 남기고 다 날림 (콤마 제거 포함)
+        # 예: "4,842,974" -> "4842974"
+        clean_text = re.sub(r'[^\d.]', '', clean_text)
+        
+        if not clean_text: return 0
+        
+        return int(float(clean_text) * multiplier)
     except:
         return 0
 
@@ -74,8 +80,8 @@ def get_driver():
     chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080") 
-    # 영어로 설정해야 'Views' 텍스트 찾기가 수월함
+    chrome_options.add_argument("--window-size=1920,1080")
+    # 영문 페이지로 강제 (숫자 파싱 통일성 위해)
     chrome_options.add_argument("--lang=en-US") 
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
@@ -84,18 +90,17 @@ def scrape_chart(driver, chart_name, url):
     print(f"Scraping {chart_name}...")
     driver.get(url)
     
-    # 쇼츠나 트렌딩은 로딩이 김
-    wait_time = 15 if ("Trending" in chart_name or "Shorts" in chart_name) else 7
-    time.sleep(wait_time)
-    
+    # 로딩 대기
+    time.sleep(10)
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(3)
+    time.sleep(5)
     
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     rows = soup.find_all('ytmc-entry-row')
     
-    # 못 찾았으면 한 번 더 (안전장치)
+    # 재시도 로직
     if not rows:
+        print("  -> Retrying load...")
         time.sleep(5)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         rows = soup.find_all('ytmc-entry-row')
@@ -112,28 +117,42 @@ def scrape_chart(driver, chart_name, url):
             if not artist_tag: artist_tag = row.find('div', class_='subtitle')
             artist = artist_tag.get_text(strip=True) if artist_tag else ""
             
-            # Video ID 추출 (MV 차트용)
+            # Video ID (MV 차트용)
             img = row.find('img')
             vid = ""
             if img and 'src' in img.attrs and '/vi/' in img['src']:
                 vid = img['src'].split('/vi/')[1].split('/')[0]
             
-            # 조회수 텍스트 추출 (Song/Shorts 차트용)
-            # 1. class='views' 찾기
-            views_text = ""
+            # [핵심 수정] 조회수 텍스트 추출
+            views_text = "0"
+            
+            # 전략 1: class='views' (MV/Shorts 차트)
             views_div = row.find('div', class_='views')
-            if not views_div: views_div = row.find('div', class_='metric') # 쇼츠는 metric일수도
+            if not views_div: views_div = row.find('div', class_='metric')
             
             if views_div:
                 views_text = views_div.get_text(strip=True)
             else:
-                # 2. 없으면 정규식으로 M, K, B 찾기
-                row_text = row.get_text(separator=' ', strip=True)
-                match = re.search(r'([\d,.]+[M|K|B])', row_text, re.IGNORECASE)
-                if match:
-                    views_text = match.group(1)
-            
-            # 텍스트를 숫자로 변환 (API 실패 시 사용)
+                # 전략 2: Song 차트용 (콤마 숫자 or M/K 찾기)
+                # 행 안의 모든 텍스트 덩어리를 가져옴
+                all_divs = row.find_all('div')
+                
+                # 보통 조회수는 맨 뒤쪽에 위치함 -> 뒤에서부터 검사
+                for div in reversed(all_divs):
+                    txt = div.get_text(strip=True)
+                    
+                    # 패턴 A: "1.5M" 처럼 단축된 숫자
+                    if re.search(r'\d+(\.\d+)?[MKB]', txt, re.IGNORECASE):
+                        views_text = txt
+                        break
+                    
+                    # 패턴 B: "4,842,974" 처럼 콤마가 포함된 완전한 숫자 (이게 Top Songs임!)
+                    # 조건: 숫자로 시작하고, 콤마가 있고, 숫자로 끝남. (랭크 1, 2 등과 구별 위해 길이 체크)
+                    if re.match(r'^\d{1,3}(,\d{3})+$', txt):
+                        views_text = txt
+                        break
+
+            # 텍스트 -> 숫자 변환
             scraped_views = parse_view_count(views_text)
 
             chart_data.append({
@@ -143,7 +162,7 @@ def scrape_chart(driver, chart_name, url):
                 "Title": title,
                 "Artist": artist,
                 "Video_ID": vid,
-                "Views": scraped_views # 일단 스크래핑한 값 넣기
+                "Views": scraped_views 
             })
             rank += 1
         except: continue
@@ -157,10 +176,9 @@ if __name__ == "__main__":
     
     for name, url in TARGET_URLS.items():
         try:
-            # 1. 기본 스크래핑 (화면 텍스트 위주)
             data = scrape_chart(driver, name, url)
             
-            # 2. Video ID가 있는 경우 API로 덮어쓰기 (더 정확하니까)
+            # Video ID 있으면 API로 업데이트 (MV 차트 정확도 UP)
             ids_to_fetch = [d["Video_ID"] for d in data if d["Video_ID"]]
             if ids_to_fetch:
                 api_stats = get_views_from_api(ids_to_fetch)
@@ -169,17 +187,20 @@ if __name__ == "__main__":
                         item["Views"] = api_stats[item["Video_ID"]]
             
             final_data.extend(data)
-            print(f"✅ {name}: {len(data)} rows (API update: {len(ids_to_fetch)})")
+            print(f"✅ {name}: {len(data)} rows collected.")
             
         except Exception as e:
             print(f"Error on {name}: {e}")
             
     driver.quit()
     
-    # 전송
     webhook = os.environ.get("APPS_SCRIPT_WEBHOOK")
     if final_data and webhook:
         print(f"Total {len(final_data)} rows. Sending...")
-        requests.post(webhook, json=final_data)
+        try:
+            requests.post(webhook, json=final_data)
+            print("Success!")
+        except Exception as e:
+            print(f"Send Error: {e}")
     else:
         print("No data or webhook missing.")
