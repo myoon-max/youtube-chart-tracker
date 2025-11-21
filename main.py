@@ -15,21 +15,21 @@ from selenium.webdriver.common.by import By
 YOUTUBE_API_KEY = "AIzaSyDFFZNYygA85qp5p99qUG2Mh8Kl5qoLip4"
 
 TARGET_URLS = {
-    # 1. Trending (API 유지)
+    # 1. Trending (API 유지 - 건드리지 않음)
     "KR_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/kr/RightNow",
     "US_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/us/RightNow",
     
-    # 2. Daily MV (Hidden Div 타격)
+    # 2. Daily MV (Hidden Div 타격 - 건드리지 않음)
     "KR_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/daily",
     "US_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/daily",
 
-    # 3. Weekly (Visible Metric 타격)
+    # 3. Weekly (Visible Metric 타격 - 건드리지 않음)
     "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "US_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/weekly",
     "KR_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/kr/weekly",
     "US_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/us/weekly",
     
-    # 4. Shorts (Shadow DOM ID 추출)
+    # 4. Shorts (JS Shadow DOM 침투 방식으로 수정됨)
     "KR_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/kr/daily",
     "US_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/us/daily"
 }
@@ -62,10 +62,9 @@ def get_driver():
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
-# ================= [핵심] Shorts ID 추출 (Shadow DOM 전용) =================
-def extract_shorts_ids_from_shadow(driver):
-    # 1. 끝까지 스크롤 (Lazy Loading 해결 - 30번 반복)
-    # 님이 쓰던 코드는 스크롤 1번이라 데이터 다 못 가져옴. 이건 끝까지 내림.
+# ================= [수정됨] Shorts ID 추출 (JS 침투 방식) =================
+def extract_shorts_ids_via_js(driver):
+    # 1. 확실한 스크롤 (Lazy Loading 해결)
     last_height = driver.execute_script("return document.body.scrollHeight")
     for _ in range(30):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -76,37 +75,60 @@ def extract_shorts_ids_from_shadow(driver):
         last_height = new_height
     time.sleep(2)
 
-    # 2. Shadow DOM 뚫고 ID 추출 (이게 님 코드엔 없음)
-    video_ids = []
+    # 2. 자바스크립트로 Shadow DOM 내부 강제 추출
+    # (이 부분이 핵심 변경 사항입니다. 외부에서 못 보니까 내부에서 실행시킵니다.)
+    script = """
+    const rows = document.querySelectorAll('ytmc-entry-row');
+    const ids = [];
+    rows.forEach(row => {
+        try {
+            // Shadow DOM 내부에 있는 ytmc-video-lockup 찾기
+            const lockup = row.querySelector('ytmc-video-lockup');
+            if (lockup && lockup.shadowRoot) {
+                // Shadow Root 내부의 링크(a#video-title-link) 찾기
+                const link = lockup.shadowRoot.querySelector('a#video-title-link');
+                if (link && link.href) {
+                    // href에서 ID만 추출 (regex)
+                    const match = link.href.match(/v=([a-zA-Z0-9_-]{11})/);
+                    if (match && match[1]) {
+                        ids.push(match[1]);
+                    } else {
+                        ids.push(""); // 매칭 실패시 빈값 유지 (순서 보존)
+                    }
+                } else {
+                    ids.push("");
+                }
+            } else {
+                ids.push("");
+            }
+        } catch (e) {
+            ids.push("");
+        }
+    });
+    return ids;
+    """
+    
     try:
-        # CSS Selector로 Shadow DOM 내부의 링크를 직접 타격
-        elements = driver.find_elements(By.CSS_SELECTOR, "a#video-title-link")
-        for el in elements:
-            href = el.get_attribute("href")
-            if href:
-                m = re.search(r"v=([a-zA-Z0-9_-]{11})", href)
-                if m:
-                    video_ids.append(m.group(1))
+        video_ids = driver.execute_script(script)
+        # 빈 리스트가 올 경우를 대비해 필터링은 나중에 함
+        return video_ids
     except Exception as e:
-        print(f"Shadow DOM extraction error: {e}")
-        
-    return video_ids
+        print(f"JS extraction error: {e}")
+        return []
 
-# ================= Shorts 딥다이브 (Selenium 방식 - 안전함) =================
+# ================= Shorts 딥다이브 =================
 def get_shorts_count_deep(driver, video_id):
     if not video_id: return 0
     url = f"https://www.youtube.com/source/{video_id}/shorts"
     try:
         driver.get(url)
-        time.sleep(1.5)
+        time.sleep(1.0) # 속도 최적화
         
-        # 전체 소스에서 Regex 탐색 (가장 안전)
         body_text = driver.page_source
         match = re.search(r'([\d,.]+[KMB]?)\s*(shorts|videos)', body_text, re.IGNORECASE)
         if match:
             return parse_count_strict(match.group(1))
             
-        # 백업
         body_text_simple = driver.find_element(By.TAG_NAME, "body").text
         match2 = re.search(r'([\d,.]+[KMB]?)\s*(shorts|videos)', body_text_simple, re.IGNORECASE)
         if match2:
@@ -148,15 +170,23 @@ def scrape_chart(chart_name, url, driver):
     is_weekly = "Weekly" in chart_name
     
     # ---------------------------------------------------------
-    # CASE 1: Shorts (Shadow DOM 처리 - 님 코드랑 다른 부분)
+    # CASE 1: Shorts (JS 침투 방식 적용)
     # ---------------------------------------------------------
     if is_shorts:
-        print("  ↳ Shorts Mode: Extracting IDs from Shadow DOM...")
-        video_ids = extract_shorts_ids_from_shadow(driver) # 여기서 ID 100개를 먼저 다 가져옴
+        print("  ↳ Shorts Mode: Extracting IDs via JS Injection...")
+        video_ids = extract_shorts_ids_via_js(driver)
         
-        # BS4로 껍데기(제목/아티스트)만 파싱
+        # BS4로 껍데기 파싱
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         rows = soup.find_all('ytmc-entry-row')
+        
+        # ID 개수와 행 개수가 다를 경우 안전장치
+        if not video_ids:
+            print("  ⚠️ Warning: No IDs returned from JS. Trying fallback regex...")
+            # 비상용: 페이지 소스 전체에서 ID 패턴 긁기 (순서 보장 안될 수 있지만 비상용)
+            matches = re.findall(r'/watch\?v=([a-zA-Z0-9_-]{11})', driver.page_source)
+            if len(matches) >= len(rows):
+                video_ids = matches[:len(rows)]
         
         for idx, row in enumerate(rows):
             try:
@@ -164,10 +194,8 @@ def scrape_chart(chart_name, url, driver):
                 artist_tag = row.find('span', class_='artistName') or row.find('div', class_='subtitle')
                 artist = artist_tag.get_text(strip=True) if artist_tag else ""
                 
-                # ID 매핑 (순서 기반)
-                vid = video_ids[idx] if idx < len(video_ids) else ""
+                vid = video_ids[idx] if (video_ids and idx < len(video_ids)) else ""
                 
-                # Shorts 조회수는 나중에 딥다이브로 채움 (일단 0)
                 data_list.append({
                     "Date": today, "Chart": chart_name, "Rank": idx+1,
                     "Title": title, "Artist": artist, "Video_ID": vid, "Views": 0
@@ -175,10 +203,9 @@ def scrape_chart(chart_name, url, driver):
             except: continue
 
     # ---------------------------------------------------------
-    # CASE 2: MV / Songs / Trending (기존 방식 유지)
+    # CASE 2: MV / Songs / Trending (기존 완벽한 코드 유지)
     # ---------------------------------------------------------
     else:
-        # 기본 스크롤
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -190,14 +217,13 @@ def scrape_chart(chart_name, url, driver):
                 artist_tag = row.find('span', class_='artistName') or row.find('div', class_='subtitle')
                 artist = artist_tag.get_text(strip=True) if artist_tag else ""
                 
-                # ID 추출 (Daily MV 등 일반 차트용)
                 vid = ""
                 anchor = row.find('a')
                 if anchor and 'href' in anchor.attrs:
                     m = re.search(r"v=([A-Za-z0-9_-]{11})", anchor['href'])
                     if m: vid = m.group(1)
                 
-                if not vid: # 백업
+                if not vid:
                     img = row.find('img')
                     if img and 'src' in img.attrs:
                         m = re.search(r'/vi(?:_webp)?/([a-zA-Z0-9_-]{11})', img['src'])
@@ -205,21 +231,16 @@ def scrape_chart(chart_name, url, driver):
 
                 final_views = 0
                 
-                # [뷰 카운트 로직]
                 if is_trending:
-                    pass # API로 채움
-                
+                    pass 
                 elif is_daily_mv:
-                    # tablet-non-displayed-metric 중 가장 큰 값 찾기
                     hidden_divs = row.find_all('div', class_='tablet-non-displayed-metric')
                     max_val = 0
                     for h in hidden_divs:
                         val = parse_count_strict(h.get_text(strip=True))
                         if val > max_val: max_val = val
                     final_views = max_val
-                    
                 elif is_weekly:
-                    # 화면 맨 끝 metric
                     metrics = row.find_all('div', class_='metric')
                     if metrics:
                         final_views = parse_count_strict(metrics[-1].get_text(strip=True))
@@ -239,10 +260,8 @@ if __name__ == "__main__":
     
     for name, url in TARGET_URLS.items():
         try:
-            # 1. 수집
             chart_data = scrape_chart(name, url, driver)
             
-            # 2. 후처리
             if "Trending" in name:
                 ids = [d["Video_ID"] for d in chart_data if d["Video_ID"]]
                 if ids:
@@ -266,7 +285,6 @@ if __name__ == "__main__":
 
     driver.quit()
     
-    # 전송
     webhook = os.environ.get("APPS_SCRIPT_WEBHOOK")
     if final_data and webhook:
         print(f"Total {len(final_data)} rows. Sending...")
