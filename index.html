@@ -96,7 +96,7 @@
     </div>
 
     <div id="shorts" class="tab-content">
-        <h3>⚡ 쇼츠 생성량 기반 진입 전략</h3>
+        <h3>⚡ 쇼츠 생성량 기반 진입 전략 (구간별 상세)</h3>
         <div class="controls"><label>기준일: <input type="date" id="shortsDate" onchange="renderShorts()"></label></div>
         <div class="table-wrap"><table id="shortsTable"><thead></thead><tbody></tbody></table></div>
     </div>
@@ -227,7 +227,6 @@
         tbody.innerHTML = html || `<tr><td colspan="6">데이터가 없습니다.</td></tr>`;
     }
 
-    // ================= 2. 월간/연간 추이 (Top 100까지 확장) =================
     function renderTrend() {
         const tbody = document.querySelector("#trendTable tbody");
         const thead = document.querySelector("#trendTable thead");
@@ -259,36 +258,46 @@
         tbody.innerHTML = html;
     }
 
-    // ================= 3. 쇼츠 전략 (데이터 부족시 누적개수 노출) =================
+    // [수정됨] 쇼츠 전략: 10, 20, 30, 40, 50위 구간으로 확장
     function renderShorts() {
         const date = document.getElementById("shortsDate").value;
         const tbody = document.querySelector("#shortsTable tbody");
         const thead = document.querySelector("#shortsTable thead");
-        thead.innerHTML = `<tr><th>차트</th><th>Top 10 진입 (일간 생성 / 누적)</th><th>Top 50 진입 (일간 생성 / 누적)</th><th>진입 컷 (50위)</th></tr>`;
+        
+        // 5개 구간 컬럼 생성
+        thead.innerHTML = `<tr><th>차트</th><th>Rank 1~10</th><th>Rank 11~20</th><th>Rank 21~30</th><th>Rank 31~40</th><th>Rank 41~50</th><th class="highlight-cut">진입 컷 (50위)</th></tr>`;
         
         const data = rawData.filter(d => d.Date === date && d.Chart.includes("Shorts"));
         const charts = [...new Set(data.map(d => d.Chart))];
         let html = "";
+        
         charts.forEach(chart => {
             const cData = data.filter(d => d.Chart === chart);
             
-            const getStat = (s, e) => {
+            let cols = "";
+            for(let i=0; i<5; i++) {
+                const s = i*10 + 1;
+                const e = (i+1)*10;
                 const seg = cData.filter(d => d.Rank >= s && d.Rank <= e);
-                const avgView = seg.length ? Math.round(seg.reduce((a,b)=>a+b.Views,0)/seg.length) : 0;
-                // 델타(일간 생성)가 있으면 평균 내고, 없으면 0
+                const avgTotal = seg.length ? Math.round(seg.reduce((a,b)=>a+b.Views,0)/seg.length) : 0;
                 const deltaSeg = seg.filter(d => d.Delta > 0);
                 const avgDelta = deltaSeg.length ? Math.round(deltaSeg.reduce((a,b)=>a+b.Delta,0)/deltaSeg.length) : 0;
                 
-                if(avgDelta > 0) return `<span style="color:red; font-weight:bold">+${avgDelta.toLocaleString()}개</span> (일간)`;
-                return `${avgView.toLocaleString()}개 (누적)`;
-            };
+                let valStr = `${avgTotal.toLocaleString()}<br><span style="font-size:0.8em; color:#888">(누적)</span>`;
+                if(avgDelta > 0) valStr = `<span style="color:red; font-weight:bold">+${avgDelta.toLocaleString()}</span><br><span style="font-size:0.8em; color:#888">(일간)</span>`;
+                
+                cols += `<td>${valStr}</td>`;
+            }
 
             const cutItem = cData.find(d => d.Rank === 50);
-            const cutVal = cutItem ? (cutItem.Delta > 0 ? `+${cutItem.Delta.toLocaleString()} (일간)` : `${cutItem.Views.toLocaleString()} (누적)`) : "-";
+            let cutVal = "-";
+            if(cutItem) {
+                cutVal = cutItem.Delta > 0 ? `<span style="color:red; font-weight:bold">+${cutItem.Delta.toLocaleString()}</span>` : `${cutItem.Views.toLocaleString()}`;
+            }
 
-            html += `<tr><td>${chart}</td><td>${getStat(1,10)}</td><td>${getStat(1,50)}</td><td class="highlight-cut">${cutVal}</td></tr>`;
+            html += `<tr><td style="font-weight:bold">${chart}</td>${cols}<td class="highlight-cut">${cutVal}</td></tr>`;
         });
-        tbody.innerHTML = html || `<tr><td colspan="4">데이터 부족 (쇼츠 데이터 없음)</td></tr>`;
+        tbody.innerHTML = html || `<tr><td colspan="7">데이터 부족 (쇼츠 데이터 없음)</td></tr>`;
     }
 
     function renderCross() {
