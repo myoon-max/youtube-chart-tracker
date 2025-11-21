@@ -16,11 +16,11 @@ import re
 YOUTUBE_API_KEY = "AIzaSyDFFZNYygA85qp5p99qUG2Mh8Kl5qoLip4"
 
 TARGET_URLS = {
-    # [그룹 A] Trending: HTML에 정확한 숫자 없음 (<10K 등). API 필수.
+    # [건드리지 않음] Trending: API 사용
     "KR_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/kr/RightNow",
     "US_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/us/RightNow",
     
-    # [그룹 B] Daily/Weekly: HTML에 일간/주간 조회수(hidden 포함) 있음. 스크래핑 필수.
+    # [원복 대상] 6개 차트: HTML 숨겨진 태그(hidden) 정밀 타격
     "KR_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/daily",
     "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "US_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/daily",
@@ -28,12 +28,31 @@ TARGET_URLS = {
     "KR_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/kr/weekly",
     "US_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/us/weekly",
     
-    # [그룹 C] Shorts: 영상 개수 딥다이브.
+    # [쇼츠] 딥다이브
     "KR_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/kr/daily",
     "US_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/us/daily"
 }
 
-# ================= API 조회 (Trending용) =================
+# ================= 숫자 변환기 =================
+def parse_count_strict(text):
+    if not text: return 0
+    t = str(text).lower().strip()
+    
+    multiplier = 1
+    if 'k' in t: multiplier = 1_000
+    elif 'm' in t: multiplier = 1_000_000
+    elif 'b' in t: multiplier = 1_000_000_000
+    
+    # 숫자와 점(.)만 남김
+    clean = re.sub(r'[^\d.]', '', t)
+    if not clean: return 0
+    
+    try:
+        val = float(clean)
+        return int(val * multiplier)
+    except: return 0
+
+# ================= API 조회 (Trending 전용) =================
 def get_views_from_api(video_ids):
     if not video_ids: return {}
     url = "https://www.googleapis.com/youtube/v3/videos"
@@ -51,33 +70,24 @@ def get_views_from_api(video_ids):
         except: pass
     return stats_map
 
-# ================= 숫자 변환기 =================
-def parse_count_strict(text):
-    if not text: return 0
-    t = str(text).lower().strip()
-    
-    multiplier = 1
-    if 'k' in t: multiplier = 1_000
-    elif 'm' in t: multiplier = 1_000_000
-    elif 'b' in t: multiplier = 1_000_000_000
-    
-    clean = re.sub(r'[^\d.]', '', t)
-    if not clean: return 0
-    
-    try:
-        val = float(clean)
-        return int(val * multiplier)
-    except: return 0
-
-# ================= 쇼츠 개수 딥다이브 =================
+# ================= 쇼츠 개수 딥다이브 (수정됨) =================
 def get_shorts_count_deep(driver, video_id):
+    if not video_id: return 0
     url = f"https://www.youtube.com/source/{video_id}/shorts"
     try:
         driver.get(url)
-        time.sleep(1)
+        # 로딩 대기 시간 약간 증가 (0 방지)
+        time.sleep(2) 
+        
+        # body 전체 텍스트에서 패턴 검색
         body_text = driver.find_element(By.TAG_NAME, "body").text
+        
+        # 패턴: "82K shorts" 또는 "1.5M videos" (대소문자 무시)
+        # 어떤 경우는 그냥 숫자만 뜰 수도 있어서 유연하게 대처
         match = re.search(r'([\d,.]+[KMB]?)\s*(shorts|videos)', body_text, re.IGNORECASE)
-        if match: return parse_count_strict(match.group(1))
+        if match:
+            return parse_count_strict(match.group(1))
+        
         return 0
     except: return 0
 
@@ -132,36 +142,32 @@ def scrape_chart(driver, chart_name, url):
             
             final_views = 0
             
-            # [전략 1] Trending: API 쓸 거니까 0으로 둠 (스크래핑 불가)
+            # [A] Trending: API 사용 (0으로 둠 -> 후처리)
             if is_trending:
                 pass
-                
-            # [전략 2] Shorts: 딥다이브 할 거니까 0으로 둠
+
+            # [B] Shorts: 딥다이브 사용 (0으로 둠 -> 후처리)
             elif is_shorts:
                 pass
-                
-            # [전략 3] Daily/Weekly (MV, Songs): HTML에서 숨겨진 숫자 찾기
+
+            # [C] MV / Songs (6개 차트): HTML 태그 정밀 타격 (원복됨)
             else:
-                # 1. class='views' 또는 'metric' 우선
+                # 1순위: 님이 찾은 그 숨겨진 태그 (tablet-non-displayed-metric)
+                # Top Songs나 Daily MV의 '콤마 숫자'가 여기 들어있음
+                hidden_metric = row.select_one('.tablet-non-displayed-metric')
+                
+                # 2순위: 일반 views (보이는 숫자)
                 views_div = row.find('div', class_='views')
                 if not views_div: views_div = row.find('div', class_='metric')
                 
                 found_text = ""
-                if views_div:
-                    found_text = views_div.get_text(strip=True)
-                else:
-                    # 2. 없으면 HTML 전체 텍스트에서 '콤마 숫자' 찾기
-                    # (Top Songs 및 숨겨진 hidden 태그 값까지 BeautifulSoup이 가져옴)
-                    all_divs = row.find_all('div')
-                    for div in reversed(all_divs):
-                        txt = div.get_text(strip=True)
-                        if re.match(r'^\d{1,3}(,\d{3})+$', txt): # 콤마 숫자
-                            found_text = txt
-                            break
-                        if re.match(r'^[\d.]+[KMB]$', txt, re.IGNORECASE): # 단축 숫자
-                            found_text = txt
-                            # break 안함 (콤마 숫자가 우선)
                 
+                if hidden_metric:
+                    found_text = hidden_metric.get_text(strip=True)
+                elif views_div:
+                    found_text = views_div.get_text(strip=True)
+                
+                # 추출한 텍스트만 파싱 (행 전체 텍스트 X -> 2025 오류 해결)
                 final_views = parse_count_strict(found_text)
 
             data_list.append({
@@ -188,9 +194,9 @@ if __name__ == "__main__":
             # 1. 기본 수집
             chart_data = scrape_chart(driver, name, url)
             
-            # 2. 후처리 (API or Deep Dive)
+            # 2. 후처리
             
-            # [A] Trending -> API 조회 (정확한 누적 조회수)
+            # [Trending] API 조회
             if "Trending" in name:
                 ids = [d["Video_ID"] for d in chart_data if d["Video_ID"]]
                 if ids:
@@ -199,15 +205,13 @@ if __name__ == "__main__":
                         if item["Video_ID"] in api_stats:
                             item["Views"] = api_stats[item["Video_ID"]]
             
-            # [B] Shorts -> 딥다이브 (영상 개수)
+            # [Shorts] 딥다이브
             elif "Shorts" in name:
                 print(f"  ↳ 🕵️‍♂️ Shorts Deep Dive ({len(chart_data)} items)...")
                 for item in chart_data:
                     if item["Video_ID"]:
                         cnt = get_shorts_count_deep(driver, item["Video_ID"])
                         item["Views"] = cnt
-            
-            # [C] 나머지는 이미 스크래핑 됨
             
             final_data.extend(chart_data)
             print(f"✅ {name}: {len(chart_data)} rows done.")
