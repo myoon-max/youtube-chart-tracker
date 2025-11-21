@@ -10,11 +10,7 @@ from selenium.webdriver.chrome.service import Service
 from bs4 import BeautifulSoup
 import time
 
-# ================= 사용자 설정 (여기만 확인하세요) =================
-# 1단계에서 만든 구글 시트의 주소 (URL)
-# 예: https://docs.google.com/spreadsheets/d/1xXxXx.../edit
-GOOGLE_SHEET_URL = os.environ.get("GOOGLE_SHEET_URL") 
-
+# ================= 설정 =================
 # 수집할 차트 리스트
 TARGET_URLS = {
     "KR_Daily_Trending": "https://charts.youtube.com/charts/Trending/kr/global",
@@ -27,7 +23,7 @@ TARGET_URLS = {
     "US_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/us/weekly"
 }
 
-# ================= 크롤링 로직 (건드리지 마세요) =================
+# ================= 크롤링 로직 =================
 def get_driver():
     chrome_options = Options()
     chrome_options.add_argument("--headless") 
@@ -39,9 +35,8 @@ def get_driver():
 def scrape_chart(driver, chart_name, url):
     print(f"Scraping {chart_name}...")
     driver.get(url)
-    time.sleep(5) # 로딩 대기
+    time.sleep(5) 
     
-    # 스크롤
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
     time.sleep(3)
     
@@ -62,7 +57,6 @@ def scrape_chart(driver, chart_name, url):
             views_div = row.find('div', class_='views')
             views_text = views_div.get_text(strip=True) if views_div else "0"
             
-            # 썸네일에서 ID 추출
             img = row.find('img')
             vid = ""
             if img and 'src' in img.attrs and '/vi/' in img['src']:
@@ -81,7 +75,7 @@ def scrape_chart(driver, chart_name, url):
         except: continue
     return data
 
-# ================= 실행 및 시트 전송 =================
+# ================= 실행 및 전송 =================
 if __name__ == "__main__":
     driver = get_driver()
     all_data = []
@@ -95,14 +89,17 @@ if __name__ == "__main__":
             
     driver.quit()
     
-    if all_data and GOOGLE_SHEET_URL:
-        # Apps Script로 데이터 전송 (POST 요청)
+    # 깃허브 Secrets에서 웹훅 주소 가져오기
+    webhook_url = os.environ.get("APPS_SCRIPT_WEBHOOK")
+    
+    if all_data and webhook_url:
         print(f"Total {len(all_data)} rows collected. Sending to Google Sheets...")
-        # 데이터 양이 많으므로 나눠서 보내거나 Apps Script 웹앱 URL로 전송해야 함.
-        # 3단계에서 Apps Script URL을 환경변수로 받을 예정
-        webhook_url = os.environ.get("APPS_SCRIPT_WEBHOOK")
-        if webhook_url:
-             requests.post(webhook_url, json=all_data)
-             print("Done!")
-        else:
-            print("Error: APPS_SCRIPT_WEBHOOK is missing.")
+        try:
+            response = requests.post(webhook_url, json=all_data)
+            print(f"Done! Server Response: {response.text}")
+        except Exception as e:
+            print(f"Failed to send data: {e}")
+    else:
+        print("Error: No data collected OR APPS_SCRIPT_WEBHOOK is missing.")
+        print(f"Data count: {len(all_data)}")
+        print(f"Webhook URL exists: {bool(webhook_url)}")
