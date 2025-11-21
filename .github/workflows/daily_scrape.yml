@@ -1,0 +1,27 @@
+name: Daily Youtube Chart Scraper
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 매일 한국시간 오전 9시 (UTC 0시)
+  workflow_dispatch:      # 수동 실행 버튼
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Install libraries
+        run: |
+          pip install pandas selenium webdriver-manager beautifulsoup4 requests
+
+      - name: Run Scraper
+        env:
+          APPS_SCRIPT_WEBHOOK: ${{ secrets.APPS_SCRIPT_WEBHOOK }}
+        run: python main.py
