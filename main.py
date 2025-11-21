@@ -29,7 +29,7 @@ TARGET_URLS = {
     "KR_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/kr/weekly",
     "US_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/us/weekly",
     
-    # 4. Shorts (JS Shadow DOM 침투 방식으로 수정됨)
+    # 4. Shorts (Endpoint로 ID 추출 -> 페이지 접속해서 "82K Shorts" 텍스트 긁기)
     "KR_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/kr/daily",
     "US_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/us/daily"
 }
@@ -62,9 +62,9 @@ def get_driver():
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
-# ================= [수정됨] Shorts ID 추출 (JS 침투 방식) =================
-def extract_shorts_ids_via_js(driver):
-    # 1. 확실한 스크롤 (Lazy Loading 해결)
+# ================= Shorts ID 추출 (Endpoint 속성 사용) =================
+def extract_shorts_ids_simple(driver):
+    # 1. 스크롤 (데이터 로딩)
     last_height = driver.execute_script("return document.body.scrollHeight")
     for _ in range(30):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -75,69 +75,56 @@ def extract_shorts_ids_via_js(driver):
         last_height = new_height
     time.sleep(2)
 
-    # 2. 자바스크립트로 Shadow DOM 내부 강제 추출
-    # (이 부분이 핵심 변경 사항입니다. 외부에서 못 보니까 내부에서 실행시킵니다.)
+    # 2. 님께서 발견한 Endpoint 속성에서 ID 추출
     script = """
     const rows = document.querySelectorAll('ytmc-entry-row');
     const ids = [];
     rows.forEach(row => {
-        try {
-            // Shadow DOM 내부에 있는 ytmc-video-lockup 찾기
-            const lockup = row.querySelector('ytmc-video-lockup');
-            if (lockup && lockup.shadowRoot) {
-                // Shadow Root 내부의 링크(a#video-title-link) 찾기
-                const link = lockup.shadowRoot.querySelector('a#video-title-link');
-                if (link && link.href) {
-                    // href에서 ID만 추출 (regex)
-                    const match = link.href.match(/v=([a-zA-Z0-9_-]{11})/);
-                    if (match && match[1]) {
-                        ids.push(match[1]);
-                    } else {
-                        ids.push(""); // 매칭 실패시 빈값 유지 (순서 보존)
-                    }
-                } else {
-                    ids.push("");
+        if (row.offsetParent === null) return; // 보이는 행만
+
+        const titleDiv = row.querySelector('#entity-title');
+        let foundId = "";
+        if (titleDiv) {
+            const endpoint = titleDiv.getAttribute('endpoint');
+            if (endpoint) {
+                const match = endpoint.match(/watch\\?v=([a-zA-Z0-9_-]{11})/);
+                if (match && match[1]) {
+                    foundId = match[1];
                 }
-            } else {
-                ids.push("");
             }
-        } catch (e) {
-            ids.push("");
         }
+        ids.push(foundId);
     });
     return ids;
     """
-    
     try:
-        video_ids = driver.execute_script(script)
-        # 빈 리스트가 올 경우를 대비해 필터링은 나중에 함
-        return video_ids
-    except Exception as e:
-        print(f"JS extraction error: {e}")
+        return driver.execute_script(script)
+    except:
         return []
 
-# ================= Shorts 딥다이브 =================
-def get_shorts_count_deep(driver, video_id):
+# ================= Shorts 딥다이브 (82K Shorts 긁기) =================
+def get_shorts_creation_count(driver, video_id):
     if not video_id: return 0
+    
+    # 여기가 핵심: 해당 소스 페이지로 직접 이동
     url = f"https://www.youtube.com/source/{video_id}/shorts"
     try:
         driver.get(url)
-        time.sleep(1.0) # 속도 최적화
+        time.sleep(1.5) # 페이지 로딩 대기
         
-        body_text = driver.page_source
-        match = re.search(r'([\d,.]+[KMB]?)\s*(shorts|videos)', body_text, re.IGNORECASE)
+        # 페이지 전체 텍스트에서 "82K Shorts" 같은 패턴 찾기
+        body_text = driver.find_element(By.TAG_NAME, "body").text
+        
+        # Regex: 숫자(1.2K, 82K 등) + 공백 + Shorts (대소문자 무시)
+        match = re.search(r'([\d,.]+[KMB]?)\s*Shorts', body_text, re.IGNORECASE)
+        
         if match:
             return parse_count_strict(match.group(1))
-            
-        body_text_simple = driver.find_element(By.TAG_NAME, "body").text
-        match2 = re.search(r'([\d,.]+[KMB]?)\s*(shorts|videos)', body_text_simple, re.IGNORECASE)
-        if match2:
-            return parse_count_strict(match2.group(1))
             
         return 0
     except: return 0
 
-# ================= API 조회 (Trending) =================
+# ================= API 조회 (Trending 전용) =================
 def get_views_from_api(video_ids):
     if not video_ids: return {}
     url = "https://www.googleapis.com/youtube/v3/videos"
@@ -170,23 +157,14 @@ def scrape_chart(chart_name, url, driver):
     is_weekly = "Weekly" in chart_name
     
     # ---------------------------------------------------------
-    # CASE 1: Shorts (JS 침투 방식 적용)
+    # CASE 1: Shorts (Endpoint ID 추출 -> 개별 페이지 접속 후 "82K" 긁기)
     # ---------------------------------------------------------
     if is_shorts:
-        print("  ↳ Shorts Mode: Extracting IDs via JS Injection...")
-        video_ids = extract_shorts_ids_via_js(driver)
+        print("  ↳ Shorts Mode: Extracting IDs & Diving for Creation Count...")
+        video_ids = extract_shorts_ids_simple(driver)
         
-        # BS4로 껍데기 파싱
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         rows = soup.find_all('ytmc-entry-row')
-        
-        # ID 개수와 행 개수가 다를 경우 안전장치
-        if not video_ids:
-            print("  ⚠️ Warning: No IDs returned from JS. Trying fallback regex...")
-            # 비상용: 페이지 소스 전체에서 ID 패턴 긁기 (순서 보장 안될 수 있지만 비상용)
-            matches = re.findall(r'/watch\?v=([a-zA-Z0-9_-]{11})', driver.page_source)
-            if len(matches) >= len(rows):
-                video_ids = matches[:len(rows)]
         
         for idx, row in enumerate(rows):
             try:
@@ -196,14 +174,20 @@ def scrape_chart(chart_name, url, driver):
                 
                 vid = video_ids[idx] if (video_ids and idx < len(video_ids)) else ""
                 
+                # [핵심] 여기서 바로 딥다이브 실행해서 "Shorts 개수"를 가져옴
+                shorts_count = 0
+                if vid:
+                    # API 아님. 직접 접속해서 화면 숫자 긁어옴.
+                    shorts_count = get_shorts_creation_count(driver, vid)
+                
                 data_list.append({
                     "Date": today, "Chart": chart_name, "Rank": idx+1,
-                    "Title": title, "Artist": artist, "Video_ID": vid, "Views": 0
+                    "Title": title, "Artist": artist, "Video_ID": vid, "Views": shorts_count
                 })
             except: continue
 
     # ---------------------------------------------------------
-    # CASE 2: MV / Songs / Trending (기존 완벽한 코드 유지)
+    # CASE 2: MV / Songs / Trending (기존 유지)
     # ---------------------------------------------------------
     else:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -232,7 +216,7 @@ def scrape_chart(chart_name, url, driver):
                 final_views = 0
                 
                 if is_trending:
-                    pass 
+                    pass # API 후처리
                 elif is_daily_mv:
                     hidden_divs = row.find_all('div', class_='tablet-non-displayed-metric')
                     max_val = 0
@@ -262,6 +246,7 @@ if __name__ == "__main__":
         try:
             chart_data = scrape_chart(name, url, driver)
             
+            # [Trending만] API로 조회수 채우기 (Shorts는 위에서 이미 82K 긁었음)
             if "Trending" in name:
                 ids = [d["Video_ID"] for d in chart_data if d["Video_ID"]]
                 if ids:
@@ -269,13 +254,6 @@ if __name__ == "__main__":
                     for item in chart_data:
                         if item["Video_ID"] in api_stats:
                             item["Views"] = api_stats[item["Video_ID"]]
-                            
-            elif "Shorts" in name:
-                print(f"  ↳ Deep diving {len(chart_data)} shorts...")
-                for item in chart_data:
-                    if item["Video_ID"]:
-                        cnt = get_shorts_count_deep(driver, item["Video_ID"])
-                        item["Views"] = cnt
             
             final_data.extend(chart_data)
             print(f"✅ {name}: {len(chart_data)} rows done.")
