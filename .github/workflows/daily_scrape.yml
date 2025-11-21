@@ -10,16 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3  # v3로 업데이트 (더 안정적)
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4 # v4로 업데이트
         with:
           python-version: '3.9'
 
+      # [핵심 변경] 일일이 적지 않고 requirements.txt를 읽어서 설치합니다.
       - name: Install libraries
         run: |
-          pip install pandas selenium webdriver-manager beautifulsoup4 requests
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run Scraper
         env:
