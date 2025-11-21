@@ -13,22 +13,21 @@
         h1 { text-align: center; margin-bottom: 20px; font-weight: 800; color: var(--secondary); }
         .status { text-align: center; color: var(--gray); font-size: 0.9em; margin-bottom: 30px; }
 
-        /* 1. 핵심 지표 카드 (진입 컷) */
+        /* 상단 요약 카드 */
         .summary-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .summary-card { background: var(--white); padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border-left: 5px solid var(--primary); }
         .summary-title { font-size: 0.9em; color: var(--gray); font-weight: 600; margin-bottom: 10px; display: block; }
         .summary-value { font-size: 1.8em; font-weight: 800; color: var(--secondary); }
         .summary-sub { font-size: 0.85em; color: var(--gray); margin-top: 5px; }
 
-        /* 탭 메뉴 */
+        /* 탭 */
         .tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .tab-btn { padding: 10px 24px; border: none; background: #e5e5e5; cursor: pointer; border-radius: 24px; font-weight: 700; font-size: 15px; color: var(--gray); transition: 0.2s; }
         .tab-btn.active { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(230, 33, 23, 0.3); }
-        
         .tab-content { display: none; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 2px 20px rgba(0,0,0,0.03); }
         .tab-content.active { display: block; }
 
-        /* 필터 컨트롤 */
+        /* 컨트롤 */
         .controls { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; margin-bottom: 20px; padding: 15px; background: #f1f1f1; border-radius: 8px; }
         .control-group { display: flex; align-items: center; gap: 8px; }
         .control-group label { font-weight: bold; font-size: 14px; }
@@ -40,7 +39,6 @@
         th { background: var(--secondary); color: white; padding: 14px; position: sticky; top: 0; text-align: center; }
         td { padding: 12px; border-bottom: 1px solid #eee; text-align: center; }
         tr:hover { background-color: #fff5f5; cursor: pointer; }
-        
         .rank-up { color: var(--primary); font-weight: bold; }
         .rank-down { color: blue; }
         .song-title { font-weight: 600; color: #333; text-align: left; }
@@ -52,7 +50,6 @@
         .close-btn { float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
         .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
         @media (max-width: 800px) { .chart-grid { grid-template-columns: 1fr; } }
-
     </style>
 </head>
 <body>
@@ -80,45 +77,28 @@
 
     <div class="tabs">
         <button class="tab-btn active" onclick="openTab('daily')">📅 데일리 상세 분석</button>
-        <button class="tab-btn" onclick="openTab('trend')">📈 월간/연간 추이 (Trend)</button>
+        <button class="tab-btn" onclick="openTab('trend')">📈 월간/연간 추이</button>
         <button class="tab-btn" onclick="openTab('shorts')">⚡ 쇼츠 전략</button>
         <button class="tab-btn" onclick="openTab('cross')">🔗 크로스 차트</button>
     </div>
 
     <div id="daily" class="tab-content active">
         <div class="controls">
-            <div class="control-group">
-                <label>📅 날짜:</label>
-                <input type="date" id="dailyDate" onchange="renderDaily()">
-            </div>
-            <div class="control-group">
-                <label>🏳️ 국가:</label>
-                <select id="countryFilter" onchange="updateChartFilter()">
-                    <option value="ALL">전체 보기</option>
-                    <option value="KR">🇰🇷 한국 (KR)</option>
-                    <option value="US">🇺🇸 미국 (US)</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label>📊 차트 종류:</label>
-                <select id="chartFilter" onchange="renderDaily()">
-                    <option value="ALL">전체 차트</option>
-                    </select>
-            </div>
+            <div class="control-group"><label>📅 날짜:</label><input type="date" id="dailyDate" onchange="renderDaily()"></div>
+            <div class="control-group"><label>🏳️ 국가:</label><select id="countryFilter" onchange="updateChartFilter()"><option value="ALL">전체 보기</option><option value="KR">🇰🇷 한국 (KR)</option><option value="US">🇺🇸 미국 (US)</option></select></div>
+            <div class="control-group"><label>📊 차트:</label><select id="chartFilter" onchange="renderDaily()"><option value="ALL">전체 차트</option></select></div>
         </div>
         <div class="table-wrap"><table id="dailyTable"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <div id="trend" class="tab-content">
-        <h3>📅 기간별 진입 필요 조회수 변화 (Trend)</h3>
+        <h3>📅 기간별 진입 필요 조회수 변화</h3>
         <div class="table-wrap"><table id="trendTable"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <div id="shorts" class="tab-content">
         <h3>⚡ 쇼츠 생성량 기반 진입 전략</h3>
-        <div class="controls">
-            <label>기준일: <input type="date" id="shortsDate" onchange="renderShorts()"></label>
-        </div>
+        <div class="controls"><label>기준일: <input type="date" id="shortsDate" onchange="renderShorts()"></label></div>
         <div class="table-wrap"><table id="shortsTable"><thead></thead><tbody></tbody></table></div>
     </div>
 
@@ -131,12 +111,9 @@
 <div id="detailModal" class="modal">
     <div class="modal-content">
         <span class="close-btn" onclick="closeModal()">&times;</span>
-        <h2 id="modalTitle">노래 제목</h2>
+        <h2 id="modalTitle">제목</h2>
         <p id="modalArtist">아티스트</p>
-        <div class="chart-grid">
-            <canvas id="viewChart"></canvas>
-            <canvas id="rankChart"></canvas>
-        </div>
+        <div class="chart-grid"><canvas id="viewChart"></canvas><canvas id="rankChart"></canvas></div>
         <h3>📋 상세 이력</h3>
         <div class="table-wrap"><table id="historyTable"><thead></thead><tbody></tbody></table></div>
     </div>
@@ -144,36 +121,25 @@
 
 <script>
     // ============================================================
-    // 🔴 구글 시트 CSV 링크 붙여넣기
-    const SHEET_CSV_URL = "여기에_구글시트_CSV_링크를_붙여넣으세요";
+    // 🔴 하드코딩된 구글 시트 주소 (수정 완료)
+    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRR9sg-5znnm3vm2rpUkfkKE4GeYJnUmtW76-5BzjFNeaYnHZ_jLQe2oSCvQLYc861AEgLUs_nqXJgx/pub?gid=0&single=true&output=csv";
     // ============================================================
 
     let rawData = [];
     let uniqueCharts = [];
 
-    // 초기화
     fetch(SHEET_CSV_URL)
         .then(res => res.text())
         .then(text => {
-            rawData = parseCSV(text); // 수정된 파서 사용
+            rawData = parseCSV(text);
             calculateDeltas();
-            
-            // 데이터 로딩 후 처리
             if(rawData.length > 0) {
                 const lastDate = rawData[rawData.length-1].Date;
-                
-                // 상단 요약 업데이트
                 updateSummary(lastDate);
-                
-                // 컨트롤러 세팅
                 document.getElementById("dailyDate").value = lastDate;
                 document.getElementById("shortsDate").value = lastDate;
-                
-                // 차트 목록 추출
                 uniqueCharts = [...new Set(rawData.map(d => d.Chart))].sort();
-                updateChartFilter(); // 필터 초기화
-
-                // 렌더링
+                updateChartFilter();
                 renderDaily();
                 renderTrend();
                 renderShorts();
@@ -181,39 +147,30 @@
             }
         });
 
-    // 🛠️ [수정됨] CSV 파서 (제목 끊김 현상 완벽 수정)
+    // 🛠️ [강력 수정] 헤더 이름 무시하고, 컬럼 순서(A,B,C...)로 강제 파싱
     function parseCSV(text) {
         const lines = text.trim().split("\n");
-        const headers = lines[0].split(",").map(h => h.replace(/"/g, "").trim());
-        
-        const idx = { 
-            date: headers.indexOf("Date"), 
-            chart: headers.indexOf("Chart"), 
-            rank: headers.indexOf("Rank"), 
-            title: headers.indexOf("Title"), 
-            artist: headers.indexOf("Artist"), 
-            views: headers.indexOf("Views") 
-        };
-
         const data = [];
+        
+        // Python 데이터 순서: 0:Date, 1:Chart, 2:Rank, 3:Title, 4:Artist, 5:VideoID, 6:Views
         for(let i=1; i<lines.length; i++) {
-            // 콤마로 나누되, 따옴표 안의 콤마는 무시하는 정규식 (여기가 핵심!)
+            // 따옴표 안의 콤마 무시 정규식
             const row = lines[i].match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
             
-            if(!row || row.length < headers.length) continue;
+            // 데이터가 부족하거나 깨진 행은 패스
+            if(!row || row.length < 7) continue;
 
-            // 데이터 정제
-            const getCol = (i) => row[i] ? row[i].replace(/^"|"$/g, "").trim() : "";
+            const getCol = (idx) => row[idx] ? row[idx].replace(/^"|"$/g, "").trim() : "";
             
-            let vStr = getCol(idx.views).replace(/,/g, "");
+            let vStr = getCol(6).replace(/,/g, ""); // 6번(G열)이 Views
             
             data.push({
-                Date: getCol(idx.date),
-                Chart: getCol(idx.chart),
-                Rank: parseInt(getCol(idx.rank)),
-                Title: getCol(idx.title), // 이제 제목 안 잘림
-                Artist: getCol(idx.artist),
-                Views: parseInt(vStr) || 0,
+                Date: getCol(0),   // A열
+                Chart: getCol(1),  // B열
+                Rank: parseInt(getCol(2)), // C열
+                Title: getCol(3),  // D열
+                Artist: getCol(4), // E열
+                Views: parseInt(vStr) || 0, // G열
                 Delta: 0
             });
         }
@@ -236,37 +193,26 @@
         });
     }
 
-    // 1. 상단 요약 카드 업데이트
     function updateSummary(date) {
         document.getElementById("current-date").innerText = date;
         document.getElementById("data-count").innerText = `총 데이터 ${rawData.length.toLocaleString()}건`;
-
-        // KR Daily MV Cut (100위)
-        const krMv = rawData.filter(d => d.Date === date && d.Chart === "KR_Daily_Top_MV" && d.Rank === 100);
-        const usMv = rawData.filter(d => d.Date === date && d.Chart === "US_Daily_Top_MV" && d.Rank === 100);
-
-        const setVal = (id, arr) => {
-            const el = document.getElementById(id);
-            const desc = document.getElementById(id.replace("-cut", "-desc"));
-            if(arr.length > 0) {
-                el.innerText = arr[0].Views.toLocaleString();
-                desc.innerText = "Top 100 진입 최소 조회수";
-            } else {
-                el.innerText = "-";
-                desc.innerText = "데이터 없음";
-            }
-        };
         
-        setVal("kr-mv-cut", krMv);
-        setVal("us-mv-cut", usMv);
+        const getCut = (chart) => {
+            const cutRank = chart.includes("Trending") ? 20 : (chart.includes("Shorts") ? 50 : 100);
+            const item = rawData.find(d => d.Date === date && d.Chart === chart && d.Rank === cutRank);
+            return item ? item.Views.toLocaleString() : "-";
+        };
+
+        document.getElementById("kr-mv-cut").innerText = getCut("KR_Daily_Top_MV");
+        document.getElementById("us-mv-cut").innerText = getCut("US_Daily_Top_MV");
+        document.getElementById("kr-mv-desc").innerText = "KR Daily MV Top 100 컷";
+        document.getElementById("us-mv-desc").innerText = "US Daily MV Top 100 컷";
     }
 
-    // 국가 필터 변경 시 차트 목록 업데이트
     function updateChartFilter() {
         const country = document.getElementById("countryFilter").value;
         const chartSelect = document.getElementById("chartFilter");
         chartSelect.innerHTML = '<option value="ALL">전체 차트</option>';
-        
         uniqueCharts.forEach(chart => {
             if(country === "ALL" || chart.startsWith(country)) {
                 const opt = document.createElement("option");
@@ -275,22 +221,18 @@
                 chartSelect.appendChild(opt);
             }
         });
-        renderDaily(); // 테이블 갱신
+        renderDaily();
     }
 
-    // ================= 1. 데일리 렌더링 (필터 적용) =================
     function renderDaily() {
         const date = document.getElementById("dailyDate").value;
         const country = document.getElementById("countryFilter").value;
         const chartFilter = document.getElementById("chartFilter").value;
-        
         const tbody = document.querySelector("#dailyTable tbody");
         const thead = document.querySelector("#dailyTable thead");
         thead.innerHTML = `<tr><th>차트</th><th>순위</th><th>제목</th><th>아티스트</th><th>조회수</th><th>전일 대비</th></tr>`;
 
         let data = rawData.filter(d => d.Date === date);
-        
-        // 필터링 로직
         if(country !== "ALL") data = data.filter(d => d.Chart.startsWith(country));
         if(chartFilter !== "ALL") data = data.filter(d => d.Chart === chartFilter);
 
@@ -299,158 +241,108 @@
             let deltaStr = "-";
             if(d.Delta > 0) deltaStr = `<span class="rank-up">▲ ${d.Delta.toLocaleString()}</span>`;
             else if(d.Delta < 0) deltaStr = `<span class="rank-down">▼ ${Math.abs(d.Delta).toLocaleString()}</span>`;
-
+            
             html += `<tr onclick="openDetail('${d.Title.replace(/'/g, "\\'")}', '${d.Artist.replace(/'/g, "\\'")}')">
-                <td>${d.Chart}</td>
-                <td>${d.Rank}</td>
-                <td class="song-title">${d.Title}</td>
-                <td>${d.Artist}</td>
-                <td style="font-weight:bold">${d.Views.toLocaleString()}</td>
-                <td>${deltaStr}</td>
-            </tr>`;
+                <td>${d.Chart}</td><td>${d.Rank}</td><td class="song-title">${d.Title}</td>
+                <td>${d.Artist}</td><td style="font-weight:bold">${d.Views.toLocaleString()}</td><td>${deltaStr}</td></tr>`;
         });
         tbody.innerHTML = html || `<tr><td colspan="6">데이터가 없습니다.</td></tr>`;
     }
 
-    // ================= 2. 월간/연간 추이 렌더링 =================
     function renderTrend() {
         const tbody = document.querySelector("#trendTable tbody");
         const thead = document.querySelector("#trendTable thead");
-        thead.innerHTML = `<tr><th>기간 (월/연)</th><th>차트</th><th>Top 10 평균</th><th>Top 20 평균</th><th class="highlight-cut">진입 컷 (평균)</th></tr>`;
-
-        // 월별로 집계
+        thead.innerHTML = `<tr><th>기간</th><th>차트</th><th>Top 10 평균</th><th>Top 20 평균</th><th class="highlight-cut">진입 컷 (평균)</th></tr>`;
+        
         const stats = {};
         rawData.forEach(d => {
-            const key = d.Date.substring(0, 7) + "|" + d.Chart; // YYYY-MM
+            const key = d.Date.substring(0, 7) + "|" + d.Chart;
             if(!stats[key]) stats[key] = { sum10:0, cnt10:0, sum20:0, cnt20:0, sumCut:0, cntCut:0 };
-            
             const s = stats[key];
             if(d.Rank <= 10) { s.sum10 += d.Views; s.cnt10++; }
             if(d.Rank >= 11 && d.Rank <= 20) { s.sum20 += d.Views; s.cnt20++; }
             
-            // 진입 컷 기준 (트렌딩 20, 쇼츠 50, 나머지 100)
-            let cutRank = 100;
-            if(d.Chart.includes("Trending")) cutRank = 20;
-            if(d.Chart.includes("Shorts")) cutRank = 50;
-            
+            const cutRank = d.Chart.includes("Trending") ? 20 : (d.Chart.includes("Shorts") ? 50 : 100);
             if(d.Rank === cutRank) { s.sumCut += d.Views; s.cntCut++; }
         });
 
         let html = "";
-        // 최신순 정렬
         Object.keys(stats).sort().reverse().forEach(key => {
             const [month, chart] = key.split("|");
             const s = stats[key];
             const avg10 = s.cnt10 ? Math.round(s.sum10/s.cnt10) : 0;
             const avg20 = s.cnt20 ? Math.round(s.sum20/s.cnt20) : 0;
             const avgCut = s.cntCut ? Math.round(s.sumCut/s.cntCut) : 0;
-
-            html += `<tr>
-                <td>${month}</td>
-                <td style="text-align:left">${chart}</td>
-                <td>${avg10.toLocaleString()}</td>
-                <td>${avg20.toLocaleString()}</td>
-                <td class="highlight-cut">${avgCut.toLocaleString()}</td>
-            </tr>`;
+            html += `<tr><td>${month}</td><td style="text-align:left">${chart}</td><td>${avg10.toLocaleString()}</td><td>${avg20.toLocaleString()}</td><td class="highlight-cut">${avgCut.toLocaleString()}</td></tr>`;
         });
         tbody.innerHTML = html;
     }
 
-    // ================= 3. 쇼츠 전략 =================
     function renderShorts() {
         const date = document.getElementById("shortsDate").value;
         const tbody = document.querySelector("#shortsTable tbody");
         const thead = document.querySelector("#shortsTable thead");
         thead.innerHTML = `<tr><th>차트</th><th>Top 10 진입 필요 (일간 생성)</th><th>Top 20 진입 필요</th><th>50위 컷 (일간 생성)</th></tr>`;
-
+        
         const data = rawData.filter(d => d.Date === date && d.Chart.includes("Shorts"));
         const charts = [...new Set(data.map(d => d.Chart))];
-
         let html = "";
         charts.forEach(chart => {
             const cData = data.filter(d => d.Chart === chart);
             const calcAvg = (s, e) => {
-                // 델타(생성량)가 양수인 것만 평균
                 const seg = cData.filter(d => d.Rank >= s && d.Rank <= e && d.Delta > 0);
                 return seg.length ? Math.round(seg.reduce((a,b)=>a+b.Delta,0)/seg.length) : 0;
             };
-            
             const cutItem = cData.find(d => d.Rank === 50);
             const cutVal = cutItem && cutItem.Delta > 0 ? cutItem.Delta : 0;
-
-            html += `<tr>
-                <td>${chart}</td>
-                <td style="color:red; font-weight:bold">+${calcAvg(1,10).toLocaleString()}개</td>
-                <td>+${calcAvg(11,20).toLocaleString()}개</td>
-                <td>+${cutVal.toLocaleString()}개</td>
-            </tr>`;
+            html += `<tr><td>${chart}</td><td style="color:red; font-weight:bold">+${calcAvg(1,10).toLocaleString()}개</td><td>+${calcAvg(11,20).toLocaleString()}개</td><td>+${cutVal.toLocaleString()}개</td></tr>`;
         });
         tbody.innerHTML = html || `<tr><td colspan="4">데이터 부족 (최소 2일치 필요)</td></tr>`;
     }
 
-    // ================= 4. 크로스 차트 =================
     function renderCross() {
         const tbody = document.querySelector("#crossTable tbody");
         const thead = document.querySelector("#crossTable thead");
         thead.innerHTML = `<tr><th>아티스트 - 노래</th><th>진입 차트 수</th><th>차트 목록</th><th>최고 순위</th></tr>`;
-
+        
         const lastDate = rawData[rawData.length-1].Date;
         const data = rawData.filter(d => d.Date === lastDate);
         const map = {};
-
         data.forEach(d => {
             const key = `${d.Artist} - ${d.Title}`;
             if(!map[key]) map[key] = { charts: [], minRank: 999 };
             map[key].charts.push(d.Chart);
             if(d.Rank < map[key].minRank) map[key].minRank = d.Rank;
         });
-
         const crosses = Object.entries(map).filter(([k,v]) => v.charts.length > 1);
         crosses.sort((a,b) => b[1].charts.length - a[1].charts.length);
-
+        
         let html = "";
         crosses.forEach(([key, val]) => {
-            html += `<tr onclick="openDetail('${key.split(" - ")[1].replace(/'/g, "\\'")}', '${key.split(" - ")[0].replace(/'/g, "\\'")}')">
-                <td class="song-title">${key}</td>
-                <td style="font-weight:bold; color:purple">${val.charts.length}</td>
-                <td>${val.charts.join(", ")}</td>
-                <td>${val.minRank}위</td>
-            </tr>`;
+            html += `<tr onclick="openDetail('${key.split(" - ")[1].replace(/'/g, "\\'")}', '${key.split(" - ")[0].replace(/'/g, "\\'")}')"><td class="song-title">${key}</td><td style="font-weight:bold; color:purple">${val.charts.length}</td><td>${val.charts.join(", ")}</td><td>${val.minRank}위</td></tr>`;
         });
         tbody.innerHTML = html;
     }
 
-    // 모달 및 차트 (동일 유지)
     let vChart = null, rChart = null;
     function openDetail(title, artist) {
         document.getElementById("detailModal").style.display = "block";
         document.getElementById("modalTitle").innerText = title;
         document.getElementById("modalArtist").innerText = artist;
-
         const history = rawData.filter(d => d.Title === title && d.Artist === artist);
         const dates = [...new Set(history.map(d => d.Date))].sort();
         const charts = [...new Set(history.map(d => d.Chart))];
-
-        // 표
+        
         const tbody = document.querySelector("#historyTable");
         tbody.innerHTML = `<thead><tr><th>날짜</th><th>차트</th><th>순위</th><th>조회수</th><th>증감</th></tr></thead><tbody>` + 
         history.sort((a,b)=>new Date(b.Date)-new Date(a.Date)).map(d => `<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td>${d.Delta}</td></tr>`).join("") + `</tbody>`;
 
-        // 그래프
         if(vChart) vChart.destroy();
         if(rChart) rChart.destroy();
-
+        
         const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'];
-        const makeDataset = (key) => charts.map((c, i) => ({
-            label: c,
-            data: dates.map(dt => {
-                const item = history.find(h => h.Date === dt && h.Chart === c);
-                return item ? item[key] : null;
-            }),
-            borderColor: colors[i % colors.length],
-            fill: false
-        }));
-
+        const makeDataset = (key) => charts.map((c, i) => ({ label: c, data: dates.map(dt => { const item = history.find(h => h.Date === dt && h.Chart === c); return item ? item[key] : null; }), borderColor: colors[i%colors.length], fill: false }));
+        
         vChart = new Chart(document.getElementById('viewChart'), { type: 'line', data: { labels: dates, datasets: makeDataset('Views') }, options: { responsive: true, plugins: { title: { display: true, text: '조회수 추이' } } } });
         rChart = new Chart(document.getElementById('rankChart'), { type: 'line', data: { labels: dates, datasets: makeDataset('Rank') }, options: { responsive: true, scales: { y: { reverse: true } }, plugins: { title: { display: true, text: '순위 추이' } } } });
     }
