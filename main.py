@@ -16,19 +16,21 @@ import re
 YOUTUBE_API_KEY = "AIzaSyDFFZNYygA85qp5p99qUG2Mh8Kl5qoLip4"
 
 TARGET_URLS = {
-    # [건드리지 않음] Trending: API 사용
+    # [건드리지 않음] Trending
     "KR_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/kr/RightNow",
     "US_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/us/RightNow",
     
-    # [수정됨] 6개 차트: HTML 숨겨진 태그(hidden) 정밀 타격
+    # [Daily MV] HTML 숨겨진 태그(hidden)만 타격
     "KR_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/daily",
-    "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "US_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/daily",
+
+    # [Weekly] 화면에 보이는 맨 오른쪽 컬럼 타격
+    "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "US_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/weekly",
     "KR_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/kr/weekly",
     "US_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/us/weekly",
     
-    # [쇼츠] 딥다이브 (ID 추출 로직 강화됨)
+    # [쇼츠]
     "KR_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/kr/daily",
     "US_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/us/daily"
 }
@@ -43,7 +45,6 @@ def parse_count_strict(text):
     elif 'm' in t: multiplier = 1_000_000
     elif 'b' in t: multiplier = 1_000_000_000
     
-    # 숫자와 점(.)만 남김
     clean = re.sub(r'[^\d.]', '', t)
     if not clean: return 0
     
@@ -52,7 +53,7 @@ def parse_count_strict(text):
         return int(val * multiplier)
     except: return 0
 
-# ================= API 조회 (Trending 전용 - 건드리지 않음) =================
+# ================= API 조회 =================
 def get_views_from_api(video_ids):
     if not video_ids: return {}
     url = "https://www.googleapis.com/youtube/v3/videos"
@@ -76,13 +77,11 @@ def get_shorts_count_deep(driver, video_id):
     url = f"https://www.youtube.com/source/{video_id}/shorts"
     try:
         driver.get(url)
-        time.sleep(2) 
-        
+        time.sleep(1.5)
         body_text = driver.find_element(By.TAG_NAME, "body").text
         match = re.search(r'([\d,.]+[KMB]?)\s*(shorts|videos)', body_text, re.IGNORECASE)
         if match:
             return parse_count_strict(match.group(1))
-        
         return 0
     except: return 0
 
@@ -102,7 +101,7 @@ def scrape_chart(driver, chart_name, url):
     print(f"🚀 Scraping {chart_name}...")
     driver.get(url)
     
-    time.sleep(8)
+    time.sleep(7)
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
     time.sleep(3)
     
@@ -121,50 +120,67 @@ def scrape_chart(driver, chart_name, url):
     # 차트 타입 구분
     is_trending = "Trending" in chart_name
     is_shorts = "Shorts" in chart_name
+    is_weekly = "Weekly" in chart_name
+    is_daily_mv = "Daily_Top_MV" in chart_name # Top Songs는 Weekly만 있음
     
     for row in rows:
         try:
+            # 1. 제목/아티스트
             title = row.find('div', class_='title').get_text(strip=True)
             artist = ""
             artist_tag = row.find('span', class_='artistName')
             if not artist_tag: artist_tag = row.find('div', class_='subtitle')
             if artist_tag: artist = artist_tag.get_text(strip=True)
             
-            # [수정 1] Video ID 추출 로직 강화 (Regex 사용)
-            # 기존 split 방식은 webp 이미지나 형식이 다르면 실패함. 정규식으로 /vi/ 뒤의 ID만 쏙 뽑아냄.
+            # 2. Video ID 추출 (강력한 Regex 적용)
             vid = ""
             img = row.find('img')
             if img and 'src' in img.attrs:
                 src = img['src']
-                # /vi/ 또는 /vi_webp/ 뒤에 오는 11자리 ID 추출
-                match = re.search(r'/vi(?:_webp)?/([a-zA-Z0-9_-]+)/', src)
+                # /vi/ 뒤에 오는 11자리 ID 무조건 추출 (webp 등 확장자 무시)
+                match = re.search(r'/vi(?:_webp)?/([a-zA-Z0-9_-]{11})', src)
                 if match:
                     vid = match.group(1)
             
             final_views = 0
             
-            # [A] Trending: API 사용 (건드리지 않음)
-            if is_trending:
+            # 3. 뷰 카운트 로직 (차트별 분기)
+
+            # [A] Trending & Shorts -> 후처리 대상 (일단 0)
+            if is_trending or is_shorts:
                 pass
 
-            # [B] Shorts: 딥다이브 사용 (Video ID만 있으면 됨)
-            elif is_shorts:
-                pass
-
-            # [C] MV / Songs (6개 차트): 님이 발견한 Hidden 태그 사용
-            else:
-                # 님께서 찾으신 class="tablet-non-displayed-metric" 태그를 정확히 조준합니다.
-                hidden_metric = row.find('div', class_='tablet-non-displayed-metric')
+            # [B] Daily Top MV -> "hidden" 속성이 있는 태그만 찾음
+            elif is_daily_mv:
+                # hidden 속성이 있는 div를 찾음. 
+                # (주의: Rank변동이나 다른 정보가 hidden일 수도 있으니, 숫자(콤마 포함)인지 체크)
+                hidden_divs = row.find_all('div', attrs={'hidden': True})
+                for h_div in hidden_divs:
+                    txt = h_div.get_text(strip=True)
+                    # 콤마가 있거나 숫자가 큰 경우 (Last week=1,2 이런거 거름)
+                    if txt and (',' in txt or parse_count_strict(txt) > 1000):
+                        final_views = parse_count_strict(txt)
+                        break
                 
-                if hidden_metric:
-                    raw_text = hidden_metric.get_text(strip=True) # 예: "292,600"
-                    final_views = parse_count_strict(raw_text)
-                else:
-                    # 비상용 fallback (기존 로직)
-                    views_div = row.find('div', class_='views')
-                    if not views_div: views_div = row.find('div', class_='metric')
-                    if views_div:
-                        final_views = parse_count_strict(views_div.get_text(strip=True))
+                # 만약 못찾았으면 fallback (거의 없을 것임)
+                if final_views == 0:
+                     # tablet-non-displayed-metric 중 가장 큰 숫자
+                     metrics = row.find_all('div', class_='tablet-non-displayed-metric')
+                     max_val = 0
+                     for m in metrics:
+                         val = parse_count_strict(m.get_text(strip=True))
+                         if val > max_val: max_val = val
+                     final_views = max_val
+
+            # [C] Weekly Charts -> 화면 맨 끝에 보이는 "Weekly views"
+            elif is_weekly:
+                # class="metric" 인 것들 중 맨 마지막 요소가 Weekly Views임
+                metrics = row.find_all('div', class_='metric')
+                # 보통 Rank(metric) -> Last week(metric) -> Weeks on chart(metric) -> Views(metric) 순서임
+                # 뒤에서부터 훑어서 숫자가 큰 걸 잡음
+                if metrics:
+                    last_metric = metrics[-1].get_text(strip=True)
+                    final_views = parse_count_strict(last_metric)
 
             data_list.append({
                 "Date": today,
