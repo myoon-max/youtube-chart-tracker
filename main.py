@@ -16,21 +16,21 @@ import re
 YOUTUBE_API_KEY = "AIzaSyDFFZNYygA85qp5p99qUG2Mh8Kl5qoLip4"
 
 TARGET_URLS = {
-    # 1. Trending (API 필수)
+    # 1. Trending (API 유지 - 건드리지 않음)
     "KR_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/kr/RightNow",
     "US_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/us/RightNow",
     
-    # 2. MV (API 안씀 -> HTML 히든/공개 태그 긁기)
+    # 2. Daily MV (스크린샷 기반 Hidden 태그 정밀 타격)
     "KR_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/daily",
-    "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "US_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/daily",
+
+    # 3. Weekly (기존 코드 유지 - 잘 작동함)
+    "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "US_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/weekly",
-    
-    # 3. Songs (ID 없음 -> 화면 숫자 긁기 필수)
     "KR_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/kr/weekly",
     "US_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/us/weekly",
     
-    # 4. Shorts (ID 있음 -> 딥다이브 개수 긁기)
+    # 4. Shorts (ID 추출 방식: Method 3 Anchor 태그 적용)
     "KR_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/kr/daily",
     "US_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/us/daily"
 }
@@ -74,11 +74,13 @@ def get_views_from_api(video_ids):
 # ================= 쇼츠 개수 딥다이브 =================
 def get_shorts_count_deep(driver, video_id):
     if not video_id: return 0
+    # Source ID 기반이 아니라 Video ID 기반으로 리다이렉트 태우는게 더 안전
     url = f"https://www.youtube.com/source/{video_id}/shorts"
     try:
         driver.get(url)
         time.sleep(1.5) 
         body_text = driver.find_element(By.TAG_NAME, "body").text
+        # "82K shorts" 또는 "1.2M videos" 패턴
         match = re.search(r'([\d,.]+[KMB]?)\s*(shorts|videos)', body_text, re.IGNORECASE)
         if match:
             return parse_count_strict(match.group(1))
@@ -96,7 +98,7 @@ def get_driver():
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
-# ================= 스크래핑 로직 =================
+# ================= 메인 스크래핑 =================
 def scrape_chart(driver, chart_name, url):
     print(f"🚀 Scraping {chart_name}...")
     driver.get(url)
@@ -108,6 +110,7 @@ def scrape_chart(driver, chart_name, url):
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     rows = soup.find_all('ytmc-entry-row')
     
+    # 로딩 실패 시 재시도
     if not rows:
         time.sleep(5)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -117,7 +120,7 @@ def scrape_chart(driver, chart_name, url):
     today = datetime.now().strftime("%Y-%m-%d")
     rank = 1
     
-    # 차트 구분
+    # 차트 타입 플래그
     is_trending = "Trending" in chart_name
     is_daily_mv = "Daily_Top_MV" in chart_name
     is_weekly = "Weekly" in chart_name 
@@ -125,61 +128,65 @@ def scrape_chart(driver, chart_name, url):
     
     for row in rows:
         try:
+            # 1. 제목/아티스트
             title = row.find('div', class_='title').get_text(strip=True)
             artist = ""
             artist_tag = row.find('span', class_='artistName')
             if not artist_tag: artist_tag = row.find('div', class_='subtitle')
             if artist_tag: artist = artist_tag.get_text(strip=True)
             
-            # [수정] Video ID 추출 (정규식으로 11자리 ID 강제 추출)
+            # 2. Video ID 추출 (강력해진 로직)
             vid = ""
-            img = row.find('img')
-            if img and 'src' in img.attrs:
-                # /vi/ 또는 /vi_webp/ 뒤에 있는 11자리 문자열 추출
-                match = re.search(r'/vi(?:_webp)?/([a-zA-Z0-9_-]{11})', img['src'])
-                if match:
-                    vid = match.group(1)
+            
+            # [Method 3] <a> 태그의 href 속성에서 추출 (가장 정확함, Shorts 해결책)
+            # 보통 href="/watch?v=ID" 또는 music.youtube.com/watch?v=ID 형태임
+            anchor = row.find('a')
+            if anchor and 'href' in anchor.attrs:
+                href = anchor['href']
+                # v= 뒤에 오는 11자리 ID 추출
+                match_href = re.search(r'v=([a-zA-Z0-9_-]{11})', href)
+                if match_href:
+                    vid = match_href.group(1)
+            
+            # href로 못 찾았을 경우(거의 없지만), 기존 img src 방식 백업 실행
+            if not vid:
+                img = row.find('img')
+                if img and 'src' in img.attrs:
+                    match_img = re.search(r'/vi(?:_webp)?/([a-zA-Z0-9_-]{11})', img['src'])
+                    if match_img:
+                        vid = match_img.group(1)
             
             final_views = 0
             
-            # -------------------------------------------------------
-            # 1. Trending: API 사용 (0으로 둠)
-            # -------------------------------------------------------
+            # 3. 뷰 카운트 및 후처리 전략
+            
+            # [A] Trending: API (0으로 둠)
             if is_trending:
                 pass 
 
-            # -------------------------------------------------------
-            # 2. Shorts: 딥다이브 (0으로 둠)
-            # -------------------------------------------------------
+            # [B] Shorts: 딥다이브 예정 (0으로 둠)
             elif is_shorts:
                 pass
 
-            # -------------------------------------------------------
-            # 3. Daily Top MV: "hidden" 태그 긁기 (HTML)
-            # -------------------------------------------------------
+            # [C] Daily Top MV (문제의 구간 해결)
+            # 스크린샷 분석: tablet-non-displayed-metric 클래스가 2개 있음.
+            # 하나는 순위변동(작은수), 하나는 뷰카운트(큰수/hidden).
+            # 전략: 해당 클래스를 가진 모든 놈을 찾아서 가장 큰 값을 View로 간주한다.
             elif is_daily_mv:
-                # hidden 속성이 있는 div를 모두 찾음
-                hidden_divs = row.find_all('div', attrs={'hidden': True})
-                for h in hidden_divs:
-                    txt = h.get_text(strip=True)
-                    # 숫자가 있고(Daily view), 길이가 좀 되는 것(단순 랭크변동 1,2 아님) 확인
-                    if txt and re.search(r'\d', txt):
-                        val = parse_count_strict(txt)
-                        # 일간 조회수가 보통 1000은 넘으므로 필터링 (랭크 변동 숫자 제외 목적)
-                        if val > 100: 
-                            final_views = val
-                            break
+                hidden_metrics = row.find_all('div', class_='tablet-non-displayed-metric')
+                max_val = 0
+                for m in hidden_metrics:
+                    txt = m.get_text(strip=True)
+                    val = parse_count_strict(txt)
+                    if val > max_val:
+                        max_val = val
+                final_views = max_val
 
-            # -------------------------------------------------------
-            # 4. Weekly (MV/Songs): 화면 "맨 오른쪽" 컬럼 긁기
-            # -------------------------------------------------------
+            # [D] Weekly: 맨 오른쪽 metric
             elif is_weekly:
-                # metric 클래스들 중 가장 마지막 것이 Weekly Views임
                 metrics = row.find_all('div', class_='metric')
                 if metrics:
-                    # 뒤에서 첫번째
-                    last_metric = metrics[-1].get_text(strip=True)
-                    final_views = parse_count_strict(last_metric)
+                    final_views = parse_count_strict(metrics[-1].get_text(strip=True))
 
             data_list.append({
                 "Date": today,
@@ -202,12 +209,12 @@ if __name__ == "__main__":
     
     for name, url in TARGET_URLS.items():
         try:
-            # 1. 1차 수집
+            # 1. 기본 수집
             chart_data = scrape_chart(driver, name, url)
             
             # 2. 후처리
             
-            # [A] Trending Only -> API 사용
+            # [Trending] API 사용
             if "Trending" in name:
                 ids = [d["Video_ID"] for d in chart_data if d["Video_ID"]]
                 if ids:
@@ -216,15 +223,13 @@ if __name__ == "__main__":
                         if item["Video_ID"] in api_stats:
                             item["Views"] = api_stats[item["Video_ID"]]
             
-            # [B] Shorts -> 딥다이브 (개수 파악)
+            # [Shorts] 딥다이브 (ID가 이제 확실하므로 잘 작동함)
             elif "Shorts" in name:
-                print(f"  ↳ 🕵️‍♂️ Checking Shorts count for {len(chart_data)} items...")
+                print(f"  ↳ 🕵️‍♂️ Shorts Deep Dive ({len(chart_data)} items)...")
                 for item in chart_data:
                     if item["Video_ID"]:
                         cnt = get_shorts_count_deep(driver, item["Video_ID"])
                         item["Views"] = cnt
-            
-            # [C] MV, Songs -> 이미 scrape_chart에서 HTML 로직으로 다 가져왔음 (추가 작업 X)
             
             final_data.extend(chart_data)
             print(f"✅ {name}: {len(chart_data)} rows done.")
