@@ -9,7 +9,7 @@
         :root { --primary: #E62117; --secondary: #0F0F0F; --bg: #F9F9F9; --white: #ffffff; --gray: #606060; }
         body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: var(--secondary); }
         
-        .container { max-width: 1600px; margin: 0 auto; }
+        .container { max-width: 1800px; margin: 0 auto; } /* 테이블 넓어져서 폭 늘림 */
         h1 { text-align: center; margin-bottom: 20px; font-weight: 800; color: var(--secondary); }
         
         /* 상단 요약 카드 */
@@ -76,7 +76,7 @@
 
     <div class="tabs">
         <button class="tab-btn active" onclick="openTab('daily')">📅 데일리 상세 분석</button>
-        <button class="tab-btn" onclick="openTab('trend')">📈 월간/연간 추이</button>
+        <button class="tab-btn" onclick="openTab('trend')">📈 구간별 목표치 분석 (Trend)</button>
         <button class="tab-btn" onclick="openTab('shorts')">⚡ 쇼츠 전략</button>
         <button class="tab-btn" onclick="openTab('cross')">🔗 크로스 차트</button>
     </div>
@@ -91,12 +91,12 @@
     </div>
 
     <div id="trend" class="tab-content">
-        <h3>📅 기간별 진입 필요 수치 변화 (누적 평균)</h3>
+        <h3>📈 구간별 진입 필요 조회수/개수 (평균)</h3>
         <div class="table-wrap"><table id="trendTable"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <div id="shorts" class="tab-content">
-        <h3>⚡ 쇼츠 생성량 기반 진입 전략 (구간별 상세)</h3>
+        <h3>⚡ 쇼츠 생성량 기반 진입 전략</h3>
         <div class="controls"><label>기준일: <input type="date" id="shortsDate" onchange="renderShorts()"></label></div>
         <div class="table-wrap"><table id="shortsTable"><thead></thead><tbody></tbody></table></div>
     </div>
@@ -120,6 +120,7 @@
 
 <script>
     // ============================================================
+    // 🔴 구글 시트 CSV 링크
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRR9sg-5znnm3vm2rpUkfkKE4GeYJnUmtW76-5BzjFNeaYnHZ_jLQe2oSCvQLYc861AEgLUs_nqXJgx/pub?gid=0&single=true&output=csv";
     // ============================================================
 
@@ -227,20 +228,31 @@
         tbody.innerHTML = html || `<tr><td colspan="6">데이터가 없습니다.</td></tr>`;
     }
 
+    // ================= 2. 월간/연간 추이 (구간별 분리) =================
     function renderTrend() {
         const tbody = document.querySelector("#trendTable tbody");
         const thead = document.querySelector("#trendTable thead");
-        thead.innerHTML = `<tr><th>기간</th><th>차트</th><th>Top 10 평균</th><th>Top 50 평균</th><th>Top 100 평균</th><th class="highlight-cut">진입 컷 (평균)</th></tr>`;
+        // 요청하신 구간: 1~10, 11~30, 31~50, 51~70, 71~100
+        thead.innerHTML = `<tr><th>기간</th><th>차트</th><th>1~10위</th><th>11~30위</th><th>31~50위</th><th>51~70위</th><th>71~100위</th><th class="highlight-cut">진입 컷(100위)</th></tr>`;
         
         const stats = {};
         rawData.forEach(d => {
             const key = d.Date.substring(0, 7) + "|" + d.Chart;
-            if(!stats[key]) stats[key] = { sum10:0, cnt10:0, sum50:0, cnt50:0, sum100:0, cnt100:0, sumCut:0, cntCut:0 };
-            const s = stats[key];
-            if(d.Rank <= 10) { s.sum10 += d.Views; s.cnt10++; }
-            if(d.Rank <= 50) { s.sum50 += d.Views; s.cnt50++; }
-            if(d.Rank <= 100) { s.sum100 += d.Views; s.cnt100++; }
+            // 각 구간별 합계와 개수 초기화
+            if(!stats[key]) stats[key] = { 
+                s1:0, c1:0, s2:0, c2:0, s3:0, c3:0, s4:0, c4:0, s5:0, c5:0, sumCut:0, cntCut:0 
+            };
             
+            const s = stats[key];
+            
+            // 구간별 데이터 집계
+            if(d.Rank >= 1 && d.Rank <= 10) { s.s1 += d.Views; s.c1++; }
+            else if(d.Rank >= 11 && d.Rank <= 30) { s.s2 += d.Views; s.c2++; }
+            else if(d.Rank >= 31 && d.Rank <= 50) { s.s3 += d.Views; s.c3++; }
+            else if(d.Rank >= 51 && d.Rank <= 70) { s.s4 += d.Views; s.c4++; }
+            else if(d.Rank >= 71 && d.Rank <= 100) { s.s5 += d.Views; s.c5++; }
+            
+            // 진입 컷 기준
             const cutRank = d.Chart.includes("Trending") ? 20 : (d.Chart.includes("Shorts") ? 50 : 100);
             if(d.Rank === cutRank) { s.sumCut += d.Views; s.cntCut++; }
         });
@@ -249,22 +261,32 @@
         Object.keys(stats).sort().reverse().forEach(key => {
             const [month, chart] = key.split("|");
             const s = stats[key];
-            const avg10 = s.cnt10 ? Math.round(s.sum10/s.cnt10) : 0;
-            const avg50 = s.cnt50 ? Math.round(s.sum50/s.cnt50) : 0;
-            const avg100 = s.cnt100 ? Math.round(s.sum100/s.cnt100) : 0;
-            const avgCut = s.cntCut ? Math.round(s.sumCut/s.cntCut) : 0;
-            html += `<tr><td>${month}</td><td style="text-align:left">${chart}</td><td>${avg10.toLocaleString()}</td><td>${avg50.toLocaleString()}</td><td>${avg100.toLocaleString()}</td><td class="highlight-cut">${avgCut.toLocaleString()}</td></tr>`;
+            
+            const avg1 = s.c1 ? Math.round(s.s1/s.c1) : "-";
+            const avg2 = s.c2 ? Math.round(s.s2/s.c2) : "-";
+            const avg3 = s.c3 ? Math.round(s.s3/s.c3) : "-";
+            const avg4 = s.c4 ? Math.round(s.s4/s.c4) : "-";
+            const avg5 = s.c5 ? Math.round(s.s5/s.c5) : "-";
+            const avgCut = s.cntCut ? Math.round(s.sumCut/s.cntCut) : "-";
+            
+            html += `<tr>
+                <td>${month}</td>
+                <td style="text-align:left">${chart}</td>
+                <td style="color:red; font-weight:bold">${avg1.toLocaleString()}</td>
+                <td>${avg2.toLocaleString()}</td>
+                <td>${avg3.toLocaleString()}</td>
+                <td>${avg4.toLocaleString()}</td>
+                <td>${avg5.toLocaleString()}</td>
+                <td class="highlight-cut">${avgCut.toLocaleString()}</td>
+            </tr>`;
         });
         tbody.innerHTML = html;
     }
 
-    // [수정됨] 쇼츠 전략: 10, 20, 30, 40, 50위 구간으로 확장
     function renderShorts() {
         const date = document.getElementById("shortsDate").value;
         const tbody = document.querySelector("#shortsTable tbody");
         const thead = document.querySelector("#shortsTable thead");
-        
-        // 5개 구간 컬럼 생성
         thead.innerHTML = `<tr><th>차트</th><th>Rank 1~10</th><th>Rank 11~20</th><th>Rank 21~30</th><th>Rank 31~40</th><th>Rank 41~50</th><th class="highlight-cut">진입 컷 (50위)</th></tr>`;
         
         const data = rawData.filter(d => d.Date === date && d.Chart.includes("Shorts"));
@@ -273,31 +295,29 @@
         
         charts.forEach(chart => {
             const cData = data.filter(d => d.Chart === chart);
-            
             let cols = "";
             for(let i=0; i<5; i++) {
                 const s = i*10 + 1;
                 const e = (i+1)*10;
                 const seg = cData.filter(d => d.Rank >= s && d.Rank <= e);
-                const avgTotal = seg.length ? Math.round(seg.reduce((a,b)=>a+b.Views,0)/seg.length) : 0;
+                
                 const deltaSeg = seg.filter(d => d.Delta > 0);
                 const avgDelta = deltaSeg.length ? Math.round(deltaSeg.reduce((a,b)=>a+b.Delta,0)/deltaSeg.length) : 0;
+                const avgTotal = seg.length ? Math.round(seg.reduce((a,b)=>a+b.Views,0)/seg.length) : 0;
                 
                 let valStr = `${avgTotal.toLocaleString()}<br><span style="font-size:0.8em; color:#888">(누적)</span>`;
                 if(avgDelta > 0) valStr = `<span style="color:red; font-weight:bold">+${avgDelta.toLocaleString()}</span><br><span style="font-size:0.8em; color:#888">(일간)</span>`;
-                
                 cols += `<td>${valStr}</td>`;
             }
-
+            
             const cutItem = cData.find(d => d.Rank === 50);
             let cutVal = "-";
             if(cutItem) {
                 cutVal = cutItem.Delta > 0 ? `<span style="color:red; font-weight:bold">+${cutItem.Delta.toLocaleString()}</span>` : `${cutItem.Views.toLocaleString()}`;
             }
-
             html += `<tr><td style="font-weight:bold">${chart}</td>${cols}<td class="highlight-cut">${cutVal}</td></tr>`;
         });
-        tbody.innerHTML = html || `<tr><td colspan="7">데이터 부족 (쇼츠 데이터 없음)</td></tr>`;
+        tbody.innerHTML = html || `<tr><td colspan="7">데이터 부족</td></tr>`;
     }
 
     function renderCross() {
