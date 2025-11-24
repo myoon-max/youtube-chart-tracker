@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicDeal Insight Analytics (Header Fixed)</title>
+    <title>MusicDeal Insight Analytics (Final Strategy)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --primary: #E62117; --secondary: #0F0F0F; --bg: #F4F5F7; --white: #ffffff; --gray: #606060; --green: #2ba640; }
@@ -27,20 +27,19 @@
         .tab-content { display: none; animation: fadeIn 0.3s; }
         .tab-content.active { display: block; }
 
-        /* 안내박스 & 컨트롤 */
-        .info-box { background: #f8f9fa; border-left: 4px solid #6c757d; padding: 15px; margin-bottom: 20px; border-radius: 4px; font-size: 0.95em; line-height: 1.6; }
-        .price-table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
-        .price-table th, .price-table td { border: 1px solid #ddd; padding: 10px; text-align: center; }
-        .price-table th { background: #e9ecef; font-weight: bold; }
+        /* 컨트롤 */
         .controls { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; padding-bottom: 15px; border-bottom: 1px solid #eee; margin-bottom: 15px; }
         input, select { padding: 8px 12px; border-radius: 8px; border: 1px solid #ced4da; font-size: 14px; }
+        
+        /* 기간 토글 버튼 */
+        .period-toggle { display: inline-flex; background: #eee; border-radius: 20px; padding: 4px; margin-left: auto; }
+        .period-btn { border: none; background: transparent; padding: 8px 16px; border-radius: 16px; cursor: pointer; font-weight: 600; font-size: 13px; color: #666; transition: 0.2s; }
+        .period-btn.active { background: var(--white); color: var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
 
-        /* 테이블 스타일 */
+        /* 테이블 스타일 (헤더 고정) */
         .table-container { overflow-x: auto; border: 1px solid #eee; border-radius: 8px; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
-        
-        /* 메인 화면 테이블 헤더 */
-        th { background-color: #212529; color: #ffffff; padding: 14px; text-align: center; border-bottom: 2px solid #dee2e6; position: sticky; top: 0; z-index: 10; font-weight: bold; }
+        th { background-color: #212529 !important; color: #ffffff !important; padding: 14px; text-align: center; border-bottom: 2px solid #dee2e6; position: sticky; top: 0; z-index: 10; font-weight: bold; }
         td { padding: 12px; border-bottom: 1px solid #e9ecef; text-align: center; vertical-align: middle; }
         tr:hover { background-color: #f1f3f5; cursor: pointer; }
         
@@ -48,14 +47,18 @@
         .rank-down { color: #0056b3; font-weight: bold; background: #e7f1ff; padding: 2px 6px; border-radius: 4px; }
         .money-text { color: var(--green); font-weight: 800; }
         .highlight-cut { background: #fff3cd; font-weight: bold; border-left: 2px solid #ffecb3; }
+        .entry-row { background-color: #fff0f0; font-weight: bold; border-top: 2px solid #E62117; }
 
-        /* 모달 & 그리드 */
+        /* 모달 */
         .modal { display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
         .modal-content { background-color: white; margin: 2vh auto; width: 95%; max-width: 1200px; height: 92vh; display: flex; flex-direction: column; padding: 20px; border-radius: 16px; overflow: hidden; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .modal-body { overflow-y: auto; flex: 1; }
         .close-btn { font-size: 30px; cursor: pointer; font-weight: bold; }
         
+        /* 모달 내부 헤더 강제 적용 */
+        #detailModal th { background-color: #212529 !important; color: #ffffff !important; }
+
         .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
@@ -74,9 +77,9 @@
 
     <div class="tabs">
         <button class="tab-btn active" onclick="openTab('daily', this)">📅 데일리 & 수익</button>
+        <button class="tab-btn" onclick="openTab('shorts-strategy', this)">⚡ 쇼츠 바이럴 전략</button>
         <button class="tab-btn" onclick="openTab('trend', this)">📈 월간/연간 추이</button>
         <button class="tab-btn" onclick="openTab('cross', this)">🔗 크로스 차트</button>
-        <button class="tab-btn" onclick="openTab('shorts-strategy', this)">⚡ 쇼츠 바이럴 전략</button>
         <button class="tab-btn" onclick="openTab('long-run', this)">🏃 롱런(좀비) 지수</button>
     </div>
 
@@ -87,29 +90,17 @@
                 <label>🏳️ 국가: <select id="countryFilter" onchange="updateChartFilter()"><option value="ALL">전체</option><option value="KR">🇰🇷 한국</option><option value="US">🇺🇸 미국</option></select></label>
                 <label>📊 차트: <select id="chartFilter" onchange="renderDaily()"><option value="ALL">전체</option></select></label>
             </div>
-            <div class="table-container"><table id="dailyTable"><thead></thead><tbody></tbody></table></div>
+            <div class="table-container">
+                <table id="dailyTable">
+                    <thead><tr><th>차트</th><th>순위</th><th>제목</th><th>아티스트</th><th>조회수/개수</th><th>전일 대비</th><th>예상 수익</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </div>
-        <div class="info-box">
-            <strong style="font-size:1.1em;">💰 수익 산출 기준 (2025년 시장 평균 기반)</strong>
-            <table class="price-table">
-                <tr><th>구분</th><th>🇰🇷 한국 (KR 차트)</th><th>🇺🇸 미국 (US 차트)</th></tr>
-                <tr><td>아트트랙 (Songs)</td><td><strong>5원</strong> / 회</td><td><strong>10원</strong> / 회</td></tr>
-                <tr><td>MV 롱폼 (MV, Trending)</td><td><strong>2.5원</strong> / 회</td><td><strong>4원</strong> / 회</td></tr>
-            </table>
-        </div>
-    </div>
-
-    <div id="trend" class="tab-content">
-        <div class="card">
-            <h3>📈 구간별 진입 필요 수치 (누적 평균)</h3>
-            <div class="table-container"><table id="trendTable"><thead></thead><tbody></tbody></table></div>
-        </div>
-    </div>
-
-    <div id="cross" class="tab-content">
-        <div class="card">
-            <h3>🔗 멀티 차트 진입 아티스트 (Cross-Chart)</h3>
-            <div class="table-container"><table id="crossTable"><thead></thead><tbody></tbody></table></div>
+        <div style="background:#f8f9fa; padding:15px; font-size:0.9em; color:#666; border-radius:8px;">
+            <strong>💰 수익 산출 기준 (2025년 시장 평균):</strong><br>
+            • 아트트랙(Songs): 🇰🇷 5원/회, 🇺🇸 10원/회 (스트리밍 로열티)<br>
+            • MV 롱폼: 🇰🇷 2.5원/회, 🇺🇸 4원/회 (광고 RPM)
         </div>
     </div>
 
@@ -118,22 +109,40 @@
             <div class="controls">
                 <label>📅 기준일: <input type="date" id="shortsDate" onchange="renderShortsStrategy()"></label>
                 <label>📊 차트: <select id="shortsChartSelect" onchange="renderShortsStrategy()"><option value="KR_Daily_Top_Shorts">🇰🇷 한국 쇼츠</option><option value="US_Daily_Top_Shorts">🇺🇸 미국 쇼츠</option></select></label>
+                
+                <div class="period-toggle">
+                    <button class="period-btn active" onclick="setShortsPeriod(1, this)">일간</button>
+                    <button class="period-btn" onclick="setShortsPeriod(7, this)">주간(평균)</button>
+                    <button class="period-btn" onclick="setShortsPeriod(30, this)">월간(평균)</button>
+                </div>
             </div>
+            
             <div id="shortsKPI" style="padding:15px; background:#fff3cd; border-radius:8px; margin-bottom:20px;"></div>
+            
             <div style="margin-bottom:30px;">
                 <h3>📊 구간별 목표 생성량 (KPI)</h3>
-                <div class="table-container"><table id="shortsTable"><thead></thead><tbody></tbody></table></div>
+                <div class="table-container">
+                    <table id="shortsTable">
+                        <thead><tr><th>구간</th><th>평균 누적 개수</th><th>평균 생성 속도</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
+
             <div class="insight-grid">
                 <div class="card" style="margin:0; height:450px;">
                     <h4 style="margin-top:0">🔥 Viral Map (산점도)</h4>
                     <canvas id="scatterChart"></canvas>
                 </div>
                 <div class="card" style="margin:0; height:450px; overflow-y:auto;">
-                    <h4 style="margin-top:0">🔥 급상승 루키 (일간 화력 Top)</h4>
-                    <table id="rookieTable"><thead><tr><th>순위</th><th>곡명</th><th>속도(일간)</th></tr></thead><tbody></tbody></table>
+                    <h4 style="margin-top:0">🔥 급상승 루키 (화력 Top)</h4>
+                    <table id="rookieTable">
+                        <thead><tr><th>순위</th><th>곡명</th><th>속도</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
+            
             <div class="card" style="margin-top:20px; height:350px;">
                 <h4 style="margin-top:0">🗓️ 요일별 화력 패턴</h4>
                 <div style="height:250px;"><canvas id="dayChart"></canvas></div>
@@ -141,14 +150,41 @@
         </div>
     </div>
 
+    <div id="trend" class="tab-content">
+        <div class="card">
+            <h3>📈 구간별 진입 필요 수치 (누적 평균)</h3>
+            <div class="table-container">
+                <table id="trendTable">
+                    <thead><tr><th>기간</th><th>차트</th><th>1~10위</th><th>11~30위</th><th>31~50위</th><th>51~70위</th><th>71~100위</th><th class="highlight-cut">진입 컷</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="cross" class="tab-content">
+        <div class="card">
+            <h3>🔗 멀티 차트 진입 아티스트</h3>
+            <div class="table-container">
+                <table id="crossTable">
+                    <thead><tr><th>아티스트 - 노래</th><th>진입 차트 수</th><th>차트 목록</th><th>최고 순위</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div id="long-run" class="tab-content">
         <div class="card">
-            <div class="info-box">
-                <strong>🧟 롱런 지수 (Long-Run Power) 활용법</strong><br>
-                차트에서 "얼마나 오랫동안 생존하며 성과를 내는가"를 점수화한 지표입니다.<br>
-                * 계산식: (차트 체류일 × 1000) ÷ 평균 순위
+            <div style="margin-bottom:15px; font-size:0.9em; color:#666;">
+                <strong>🧟 롱런 지수란?</strong> 차트에서 오랫동안 생존하며 꾸준한 성과를 내는 곡 (계산식: 체류일 × 1000 ÷ 평균 순위)
             </div>
-            <div class="table-container"><table id="zombieTable"><thead><tr><th>곡명</th><th>체류일</th><th>평균순위</th><th>롱런점수</th><th>상태</th></tr></thead><tbody></tbody></table></div>
+            <div class="table-container">
+                <table id="zombieTable">
+                    <thead><tr><th>곡명</th><th>체류일</th><th>평균순위</th><th>롱런점수</th><th>상태</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -162,7 +198,7 @@
         <div class="modal-body">
             <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:20px; margin-bottom:30px;">
                 <div class="card" style="margin:0; border-left:5px solid var(--green); text-align:center;">
-                    <span class="stat-label">💰 추정 누적 수익 (History Total)</span><span class="stat-value" id="mRevenue" style="color:var(--green)">-</span>
+                    <span class="stat-label">💰 추정 누적 수익</span><span class="stat-value" id="mRevenue" style="color:var(--green)">-</span>
                 </div>
                 <div class="card" style="margin:0; text-align:center;">
                     <span class="stat-label">🏆 최고 순위</span><span class="stat-value" id="mBestRank">-</span>
@@ -179,7 +215,8 @@
                 <h3>📋 상세 이력</h3>
                 <div class="table-container">
                     <table id="historyTable">
-                        <thead></thead><tbody></tbody>
+                        <thead><tr><th>날짜</th><th>차트</th><th>순위</th><th>수치</th><th>증감</th><th>수익</th></tr></thead>
+                        <tbody></tbody>
                     </table>
                 </div>
             </div>
@@ -192,6 +229,7 @@
     const RATES = { KR: { song: 5.0, mv: 2.5 }, US: { song: 10.0, mv: 4.0 } };
     let rawData = [], uniqueCharts = [];
     let scatterChartInst=null, dayChartInst=null, vChart=null, rChart=null;
+    let shortsPeriod = 1; // 1=일간, 7=주간, 30=월간
 
     try {
         fetch(SHEET_CSV_URL).then(r=>r.text()).then(t=>{
@@ -204,6 +242,8 @@
                 document.getElementById("shortsDate").value = lastDate;
                 uniqueCharts = [...new Set(rawData.map(d => d.Chart))].sort();
                 updateChartFilter();
+                
+                // 초기 렌더링
                 renderDaily(); renderTrend(); renderCross(); renderShortsStrategy(); renderLongRun();
             }
         });
@@ -295,73 +335,94 @@
         }).join("") || `<tr><td colspan="7" style="text-align:center; padding:20px;">데이터 없음</td></tr>`;
     }
 
-    // [2] 트렌드
-    function renderTrend() {
-        const tbody = document.querySelector("#trendTable tbody");
-        const stats = {};
-        rawData.forEach(d => {
-            const key = d.Date.substring(0, 7) + "|" + d.Chart;
-            if(!stats[key]) stats[key] = { s:[0,0,0,0,0,0], c:[0,0,0,0,0,0], sumCut:0, cntCut:0 };
-            let idx = -1; 
-            if(d.Rank<=10) idx=0; else if(d.Rank<=20) idx=1; else if(d.Rank<=30) idx=2; 
-            else if(d.Rank<=40) idx=3; else if(d.Rank<=50) idx=4; else if(d.Rank<=100) idx=5;
-            if(idx>=0) { stats[key].s[idx]+=d.Views; stats[key].c[idx]++; }
-            const cutRank = d.Chart.includes("Trending")?20:(d.Chart.includes("Shorts")?50:100);
-            if(d.Rank===cutRank) { stats[key].sumCut+=d.Views; stats[key].cntCut++; }
-        });
-        tbody.innerHTML = Object.keys(stats).sort().reverse().map(k => {
-            const [m, c] = k.split("|"); const s = stats[k];
-            let cols = ""; for(let i=0; i<6; i++) cols += `<td>${s.c[i]?Math.round(s.s[i]/s.c[i]).toLocaleString():"-"}</td>`;
-            const cut = s.cntCut ? Math.round(s.sumCut/s.cntCut).toLocaleString() : "-";
-            return `<tr><td>${m}</td><td style="text-align:left">${c}</td>${cols}<td class="highlight-cut">${cut}</td></tr>`;
-        }).join("");
+    // [2] 쇼츠 (기간 평균 기능 탑재)
+    function setShortsPeriod(days, btn) {
+        shortsPeriod = days;
+        document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderShortsStrategy();
     }
 
-    // [3] 크로스
-    function renderCross() {
-        const tbody = document.querySelector("#crossTable tbody");
-        const lastDate = rawData[rawData.length-1].Date;
-        const data = rawData.filter(d => d.Date === lastDate);
-        const map = {};
-        data.forEach(d => {
-            const k = `${d.Artist} - ${d.Title}`; if(!map[k]) map[k] = { charts: [], minRank: 999 }; map[k].charts.push(d.Chart); if(d.Rank < map[k].minRank) map[k].minRank = d.Rank;
-        });
-        const crosses = Object.entries(map).filter(([k,v]) => v.charts.length > 1).sort((a,b) => b[1].charts.length - a[1].charts.length);
-        tbody.innerHTML = crosses.map(([k, v]) => `<tr onclick="openDetail('${k.split(" - ")[1].replace(/'/g, "\\'")}', '${k.split(" - ")[0].replace(/'/g, "\\'")}')"><td class="song-title">${k}</td><td style="font-weight:bold; color:#6f42c1">${v.charts.length}개</td><td>${v.charts.join(", ")}</td><td>${v.minRank}위</td></tr>`).join("");
-    }
-
-    // [4] 쇼츠
     function renderShortsStrategy() {
         const date = document.getElementById("shortsDate").value;
         const chartName = document.getElementById("shortsChartSelect").value;
         const data = rawData.filter(d => d.Date === date && d.Chart === chartName);
         if(data.length === 0) { document.getElementById("shortsKPI").innerHTML = "데이터 없음"; return; }
 
-        const top10 = data.filter(d => d.Rank <= 10 && d.Delta > 0);
-        const avgSpeed = top10.length ? Math.round(top10.reduce((a,b)=>a+b.Delta,0)/top10.length) : 0;
+        // 기간 라벨
+        let pLabel = "일간 생성";
+        if(shortsPeriod === 7) pLabel = "주간 평균 생성(일)";
+        if(shortsPeriod === 30) pLabel = "월간 평균 생성(일)";
+
+        // 기간별 평균 속도 계산 로직
+        const calcPeriodAvg = (items) => {
+            if(!items || items.length === 0) return 0;
+            // items는 오늘자 데이터. 각 아이템의 과거 기록을 조회해야 함.
+            // 간단하게: 오늘자 Delta는 '어제 대비'이므로, 진정한 7일 평균을 내려면 과거 7일치 데이터를 모두 가져와야 함.
+            // Client-side 부하를 줄이기 위해, 여기서는 [오늘의 Delta]를 기준으로 기간 추정치(Projection)를 보여주는 것이 아니라,
+            // '과거 N일간의 Delta 평균'을 계산하는 것이 맞음.
+            
+            let totalDelta = 0;
+            let count = 0;
+            
+            // 오늘 리스트에 있는 곡들의 과거 N일치 Delta 평균
+            const targetDate = new Date(date);
+            const startDate = new Date(targetDate);
+            startDate.setDate(targetDate.getDate() - shortsPeriod + 1); // 오늘 포함 N일
+            
+            items.forEach(item => {
+                const hist = rawData.filter(d => d.Title === item.Title && d.Artist === item.Artist && new Date(d.Date) >= startDate && new Date(d.Date) <= targetDate);
+                const validDeltas = hist.filter(h => h.Delta > 0);
+                if(validDeltas.length > 0) {
+                    const avg = validDeltas.reduce((a,b)=>a+b.Delta,0) / validDeltas.length;
+                    totalDelta += avg;
+                    count++;
+                }
+            });
+            
+            return count > 0 ? Math.round(totalDelta / count) : 0;
+        };
+
+        // KPI 계산
+        const top10Items = data.filter(d => d.Rank <= 10);
+        const avgSpeed = calcPeriodAvg(top10Items);
+        
         const cutItem = data.find(d => d.Rank === 50);
-        const cutSpeed = cutItem && cutItem.Delta > 0 ? cutItem.Delta : "?";
-        document.getElementById("shortsKPI").innerHTML = `<strong>💡 Insight:</strong> Top 10 평균화력 <span style="color:red">+${avgSpeed.toLocaleString()}개/일</span> | 50위 방어선 <span style="color:blue">+${cutSpeed.toLocaleString()}개/일</span>`;
+        const cutSpeed = cutItem ? calcPeriodAvg([cutItem]) : 0;
+
+        document.getElementById("shortsKPI").innerHTML = `<strong>💡 ${pLabel} Insight:</strong> Top 10 평균속도 <span style="color:red">+${avgSpeed.toLocaleString()}개/일</span> | 50위 방어선 <span style="color:blue">+${cutSpeed.toLocaleString()}개/일</span>`;
 
         if(scatterChartInst) scatterChartInst.destroy();
         const ctx = document.getElementById('scatterChart').getContext('2d');
         const points = data.filter(d => d.Delta > 0).map(d => ({ x: d.Views, y: d.Delta, title: d.Title, rank: d.Rank }));
         scatterChartInst = new Chart(ctx, { type: 'scatter', data: { datasets: [{ label: '곡 분포', data: points, backgroundColor: p=>p.raw.rank<=10?'#E62117':(p.raw.rank<=50?'#36A2EB':'#adb5bd') }] }, options: { responsive:true, maintainAspectRatio:false, scales: { x: {type:'logarithmic', title:{display:true, text:'누적'}}, y: {title:{display:true, text:'일간 생성'}} }, plugins: { tooltip: { callbacks: { label: c => `${c.raw.rank}위: ${c.raw.title}` } } } } });
 
+        // 루키 (일간 기준 유지)
         const avgD = data.reduce((a,b)=>a+(b.Delta>0?b.Delta:0),0) / data.length;
         const rookies = data.filter(d => d.Rank > 20 && d.Delta > avgD).sort((a,b) => b.Delta - a.Delta);
         document.querySelector("#rookieTable tbody").innerHTML = rookies.slice(0, 10).map(d => `<tr onclick="openDetail('${d.Title.replace(/'/g, "\\'")}', '${d.Artist.replace(/'/g, "\\'")}')"><td>${d.Rank}</td><td>${d.Title}</td><td style="color:red">+${d.Delta.toLocaleString()}</td></tr>`).join("");
 
+        // 메인 테이블
         const tbody = document.querySelector("#shortsTable tbody");
         let html = "";
         for(let i=0; i<5; i++) {
             const s = i*10+1; const e = (i+1)*10;
             const seg = data.filter(d => d.Rank >= s && d.Rank <= e);
             const avgT = seg.length ? Math.round(seg.reduce((a,b)=>a+b.Views,0)/seg.length) : 0;
-            const dSeg = seg.filter(d => d.Delta > 0);
-            const avgD = dSeg.length ? Math.round(dSeg.reduce((a,b)=>a+b.Delta,0)/dSeg.length) : 0;
-            html += `<tr><td>${s}~${e}위</td><td>${avgT.toLocaleString()}</td><td style="color:red; font-weight:bold">+${avgD.toLocaleString()}</td></tr>`;
+            
+            // 구간별 기간 평균 속도
+            const periodAvgSpeed = calcPeriodAvg(seg);
+            
+            html += `<tr><td>${s}~${e}위</td><td>${avgT.toLocaleString()}</td><td style="color:red; font-weight:bold">+${periodAvgSpeed.toLocaleString()} / 일</td></tr>`;
         }
+        
+        // 🏁 50위 진입 컷 추가
+        if(cutItem) {
+            const cutTotal = cutItem.Views.toLocaleString();
+            const cutVelo = calcPeriodAvg([cutItem]).toLocaleString();
+            html += `<tr class="entry-row"><td style="color:#E62117">🏁 50위 진입 컷 (Entry Level)</td><td style="font-weight:bold">${cutTotal} (누적)</td><td style="color:#E62117; font-weight:bold">+${cutVelo} / 일</td></tr>`;
+        }
+
         tbody.innerHTML = html;
 
         const dayStats = [0,0,0,0,0,0,0], dayCnt = [0,0,0,0,0,0,0];
@@ -373,6 +434,50 @@
         if(dayChartInst) dayChartInst.destroy();
         const dayCtx = document.getElementById('dayChart').getContext('2d');
         dayChartInst = new Chart(dayCtx, { type: 'bar', data: { labels:['일','월','화','수','목','금','토'], datasets:[{ label:'평균 생성량', data:dayAvgs, backgroundColor:'rgba(230,33,23,0.6)' }] }, options:{responsive:true, maintainAspectRatio:false} });
+    }
+
+    // [3] 트렌드
+    function renderTrend() {
+        const tbody = document.querySelector("#trendTable tbody");
+        const stats = {};
+        rawData.forEach(d => {
+            const key = d.Date.substring(0, 7) + "|" + d.Chart;
+            if(!stats[key]) stats[key] = { s:[0,0,0,0,0,0], c:[0,0,0,0,0,0], sumCut:0, cntCut:0 };
+            const s = stats[key];
+            // 1~10, 11~30, 31~50, 51~70, 71~100
+            if(d.Rank<=10) { s.s[0]+=d.Views; s.c[0]++; }
+            else if(d.Rank<=30) { s.s[1]+=d.Views; s.c[1]++; }
+            else if(d.Rank<=50) { s.s[2]+=d.Views; s.c[2]++; }
+            else if(d.Rank<=70) { s.s[3]+=d.Views; s.c[3]++; }
+            else if(d.Rank<=100) { s.s[4]+=d.Views; s.c[4]++; }
+            
+            const cutRank = d.Chart.includes("Trending")?20:(d.Chart.includes("Shorts")?50:100);
+            if(d.Rank===cutRank) { s.sumCut+=d.Views; s.cntCut++; }
+        });
+        tbody.innerHTML = Object.keys(stats).sort().reverse().map(k => {
+            const [m, c] = k.split("|"); const s = stats[k];
+            let cols = ""; 
+            cols += `<td>${s.c[0]?Math.round(s.s[0]/s.c[0]).toLocaleString():"-"}</td>`;
+            cols += `<td>${s.c[1]?Math.round(s.s[1]/s.c[1]).toLocaleString():"-"}</td>`;
+            cols += `<td>${s.c[2]?Math.round(s.s[2]/s.c[2]).toLocaleString():"-"}</td>`;
+            cols += `<td>${s.c[3]?Math.round(s.s[3]/s.c[3]).toLocaleString():"-"}</td>`;
+            cols += `<td>${s.c[4]?Math.round(s.s[4]/s.c[4]).toLocaleString():"-"}</td>`;
+            const cut = s.cntCut ? Math.round(s.sumCut/s.cntCut).toLocaleString() : "-";
+            return `<tr><td>${m}</td><td style="text-align:left">${c}</td>${cols}<td class="highlight-cut">${cut}</td></tr>`;
+        }).join("");
+    }
+
+    // [4] 크로스
+    function renderCross() {
+        const tbody = document.querySelector("#crossTable tbody");
+        const lastDate = rawData[rawData.length-1].Date;
+        const data = rawData.filter(d => d.Date === lastDate);
+        const map = {};
+        data.forEach(d => {
+            const k = `${d.Artist} - ${d.Title}`; if(!map[k]) map[k] = { charts: [], minRank: 999 }; map[k].charts.push(d.Chart); if(d.Rank < map[k].minRank) map[k].minRank = d.Rank;
+        });
+        const crosses = Object.entries(map).filter(([k,v]) => v.charts.length > 1).sort((a,b) => b[1].charts.length - a[1].charts.length);
+        tbody.innerHTML = crosses.map(([k, v]) => `<tr onclick="openDetail('${k.split(" - ")[1].replace(/'/g, "\\'")}', '${k.split(" - ")[0].replace(/'/g, "\\'")}')"><td class="song-title">${k}</td><td style="font-weight:bold; color:#6f42c1">${v.charts.length}개</td><td>${v.charts.join(", ")}</td><td>${v.minRank}위</td></tr>`).join("");
     }
 
     // [5] 롱런
@@ -404,23 +509,8 @@
         vChart = new Chart(document.getElementById('viewChart'), { type:'line', data:{labels:dates, datasets:mkDs('Views')}, options:{responsive:true, maintainAspectRatio:false} });
         rChart = new Chart(document.getElementById('rankChart'), { type:'line', data:{labels:dates, datasets:mkDs('Rank')}, options:{responsive:true, maintainAspectRatio:false, scales:{y:{reverse:true}}} });
 
-        // 헤더 강제 삽입 (검은색 배경 + 흰색 글씨)
-        const tableObj = document.getElementById("historyTable");
-        tableObj.innerHTML = `
-            <thead>
-                <tr style="background-color:#212529; color:#ffffff;">
-                    <th style="padding:12px;">날짜</th>
-                    <th style="padding:12px;">차트</th>
-                    <th style="padding:12px;">순위</th>
-                    <th style="padding:12px;">수치</th>
-                    <th style="padding:12px;">증감</th>
-                    <th style="padding:12px;">수익</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${hist.map(d => `<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td>${d.Delta>0?'+'+d.Delta:d.Delta}</td><td style="color:var(--green)">₩${d.Revenue.toLocaleString()}</td></tr>`).join("")}
-            </tbody>
-        `;
+        document.querySelector("#historyTable tbody").innerHTML = hist.map(d => 
+            `<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td>${d.Delta>0?'+'+d.Delta:d.Delta}</td><td style="color:var(--green)">₩${d.Revenue.toLocaleString()}</td></tr>`).join("");
     }
     function closeModal() { document.getElementById("detailModal").style.display = "none"; }
     window.onclick = function(e) { if(e.target == document.getElementById("detailModal")) closeModal(); }
