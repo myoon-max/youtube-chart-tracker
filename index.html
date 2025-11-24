@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicDeal Insight Analytics (Final)</title>
+    <title>MusicDeal Insight Analytics (Fixed)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --primary: #E62117; --secondary: #0F0F0F; --bg: #F4F5F7; --white: #ffffff; --gray: #606060; --green: #2ba640; }
@@ -42,11 +42,12 @@
         input, select { padding: 8px 12px; border-radius: 8px; border: 1px solid #ced4da; font-size: 14px; }
         
         /* 테이블 */
-        .table-container { overflow-x: auto; }
+        .table-container { overflow-x: auto; border: 1px solid #eee; border-radius: 8px; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
-        th { background: #f8f9fa; color: var(--secondary); padding: 14px; position: sticky; top: 0; text-align: center; border-bottom: 2px solid #e9ecef; }
+        /* 헤더 스타일 강화 */
+        th { background: #212529; color: #fff; padding: 14px; position: sticky; top: 0; text-align: center; z-index: 10; font-weight: bold; }
         td { padding: 12px; border-bottom: 1px solid #e9ecef; text-align: center; vertical-align: middle; }
-        tr:hover { background-color: #f8f9fa; cursor: pointer; }
+        tr:hover { background-color: #f1f3f5; cursor: pointer; }
         
         .rank-up { color: #E62117; font-weight: bold; background: #fff5f5; padding: 2px 6px; border-radius: 4px; }
         .rank-down { color: #0056b3; font-weight: bold; background: #e7f1ff; padding: 2px 6px; border-radius: 4px; }
@@ -145,30 +146,29 @@
             </div>
             <div id="shortsKPI" style="padding:15px; background:#fff3cd; border-radius:8px; margin-bottom:20px;"></div>
             
+            <div style="margin-bottom:30px;">
+                <h3>📊 구간별 목표 생성량 (KPI)</h3>
+                <div class="table-container"><table id="shortsTable"><thead></thead><tbody></tbody></table></div>
+            </div>
+
             <div class="insight-grid">
-                <div class="card" style="margin:0; height:400px;">
+                <div class="card" style="margin:0; height:450px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <h4 style="margin:0;">🔥 Viral Map</h4>
-                        <span style="font-size:0.8em; color:#666;">🔴Top10 🔵Rank11~50 ⚫Rank51~100</span>
+                        <h4 style="margin:0;">🔥 Viral Map (산점도)</h4>
+                        <span style="font-size:0.8em; color:#666;">🔴Top10 🔵Top50</span>
                     </div>
                     <canvas id="scatterChart"></canvas>
                 </div>
                 
-                <div class="card" style="margin:0; height:400px;">
-                    <h4 style="margin-top:0">🗓️ 요일별 화력 패턴 (쇼츠 생성량)</h4>
-                    <p style="font-size:0.85em; color:#666; margin-bottom:10px;">어떤 요일에 쇼츠가 가장 많이 터지는지 분석합니다.</p>
-                    <div style="height:300px;"><canvas id="dayChart"></canvas></div>
+                <div class="card" style="margin:0; height:450px; overflow-y:auto;">
+                    <h4 style="margin-top:0">🔥 급상승 루키 (일간 화력 Top)</h4>
+                    <table id="rookieTable"><thead><tr><th>순위</th><th>곡명</th><th>속도(일간)</th></tr></thead><tbody></tbody></table>
                 </div>
             </div>
             
-            <div style="margin-top:20px; height:300px; overflow-y:auto;" class="card">
-                <h4 style="margin-top:0">🔥 급상승 루키 (일간 화력 Top)</h4>
-                <table id="rookieTable"><thead><tr><th>순위</th><th>곡명</th><th>속도(일간)</th></tr></thead><tbody></tbody></table>
-            </div>
-
-            <div style="margin-top:20px;">
-                <h3>📊 구간별 목표 생성량 (KPI)</h3>
-                <div class="table-container"><table id="shortsTable"><thead></thead><tbody></tbody></table></div>
+            <div class="card" style="margin-top:20px; height:350px;">
+                <h4 style="margin-top:0">🗓️ 요일별 화력 패턴</h4>
+                <div style="height:250px;"><canvas id="dayChart"></canvas></div>
             </div>
         </div>
     </div>
@@ -243,11 +243,11 @@
             uniqueCharts = [...new Set(rawData.map(d => d.Chart))].sort();
             updateChartFilter();
             
-            // 렌더링 (탭 순서대로)
+            // 렌더링
+            renderShortsStrategy();
             renderDaily();
             renderTrend();
             renderCross();
-            renderShortsStrategy();
             renderLongRun();
         }
     });
@@ -328,6 +328,8 @@
         const country = document.getElementById("countryFilter").value;
         const chartFilter = document.getElementById("chartFilter").value;
         const tbody = document.querySelector("#dailyTable tbody");
+        const thead = document.querySelector("#dailyTable thead");
+        thead.innerHTML = `<tr><th>차트</th><th>순위</th><th>제목</th><th>아티스트</th><th>조회수/개수</th><th>전일 대비</th><th>예상 수익</th></tr>`;
         let data = rawData.filter(d => d.Date === date);
         if(country !== "ALL") data = data.filter(d => d.Chart.startsWith(country));
         if(chartFilter !== "ALL") data = data.filter(d => d.Chart === chartFilter);
@@ -361,6 +363,8 @@
         document.querySelector("#rookieTable tbody").innerHTML = rookies.slice(0, 10).map(d => `<tr onclick="openDetail('${d.Title.replace(/'/g, "\\'")}', '${d.Artist.replace(/'/g, "\\'")}')"><td>${d.Rank}</td><td>${d.Title}</td><td style="color:red">+${d.Delta.toLocaleString()}</td></tr>`).join("");
 
         const tbody = document.querySelector("#shortsTable tbody");
+        const thead = document.querySelector("#shortsTable thead");
+        thead.innerHTML = `<tr><th>구간</th><th>평균 누적</th><th>평균 속도(일간)</th></tr>`;
         let html = "";
         for(let i=0; i<5; i++) {
             const s = i*10+1; const e = (i+1)*10;
@@ -372,6 +376,7 @@
         }
         tbody.innerHTML = html;
 
+        // 요일별 패턴
         const dayStats = [0,0,0,0,0,0,0], dayCnt = [0,0,0,0,0,0,0];
         rawData.filter(d => d.Chart === chartName && d.Delta > 0).forEach(d => {
             const day = new Date(d.Date).getDay();
@@ -393,6 +398,8 @@
     // [4] 트렌드
     function renderTrend() {
         const tbody = document.querySelector("#trendTable tbody");
+        const thead = document.querySelector("#trendTable thead");
+        thead.innerHTML = `<tr><th>기간</th><th>차트</th><th>1~10위</th><th>11~30위</th><th>31~50위</th><th>51~70위</th><th>71~100위</th><th class="highlight-cut">100위 컷</th></tr>`;
         const stats = {};
         rawData.forEach(d => {
             const key = d.Date.substring(0, 7) + "|" + d.Chart;
@@ -413,6 +420,8 @@
     // [5] 크로스
     function renderCross() {
         const tbody = document.querySelector("#crossTable tbody");
+        const thead = document.querySelector("#crossTable thead");
+        thead.innerHTML = `<tr><th>아티스트 - 노래</th><th>진입 차트 수</th><th>차트 목록</th><th>최고 순위</th></tr>`;
         const lastDate = rawData[rawData.length-1].Date;
         const data = rawData.filter(d => d.Date === lastDate);
         const map = {};
@@ -423,6 +432,7 @@
         tbody.innerHTML = crosses.map(([k, v]) => `<tr onclick="openDetail('${k.split(" - ")[1].replace(/'/g, "\\'")}', '${k.split(" - ")[0].replace(/'/g, "\\'")}')"><td class="song-title">${k}</td><td style="font-weight:bold; color:#6f42c1">${v.charts.length}개</td><td>${v.charts.join(", ")}</td><td>${v.minRank}위</td></tr>`).join("");
     }
 
+    let vChart=null, rChart=null;
     function openDetail(title, artist) {
         document.getElementById("detailModal").style.display = "block";
         document.getElementById("modalTitle").innerText = title;
@@ -449,6 +459,13 @@
     }
     function closeModal() { document.getElementById("detailModal").style.display = "none"; }
     window.onclick = function(e) { if(e.target == document.getElementById("detailModal")) closeModal(); }
+    function openTab(id, btn) {
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        btn.classList.add('active');
+        window.dispatchEvent(new Event('resize'));
+    }
 </script>
 </body>
 </html>
