@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicDeal Insight Analytics (Fixed 3)</title>
+    <title>MusicDeal Insight Analytics (Final Fixed)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --primary: #E62117; --secondary: #0F0F0F; --bg: #F4F5F7; --white: #ffffff; --gray: #606060; --green: #2ba640; }
@@ -35,23 +35,16 @@
         .controls { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; padding-bottom: 15px; border-bottom: 1px solid #eee; margin-bottom: 15px; }
         input, select { padding: 8px 12px; border-radius: 8px; border: 1px solid #ced4da; font-size: 14px; }
 
-        /* 테이블 스타일 (모달 포함 모든 테이블 적용) */
+        /* 테이블 스타일 */
         .table-container { overflow-x: auto; border: 1px solid #eee; border-radius: 8px; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
         
-        /* 헤더 스타일 강제 적용 (!important) */
-        th { 
-            background-color: #212529 !important; 
-            color: #ffffff !important; 
-            padding: 14px; 
-            text-align: center; 
-            border-bottom: 2px solid #dee2e6; 
-            position: sticky; 
-            top: 0; 
-            z-index: 10; 
-            font-weight: bold;
-        }
+        /* 공통 헤더 스타일 */
+        th { background-color: #212529 !important; color: #ffffff !important; padding: 14px; text-align: center; border-bottom: 2px solid #dee2e6; position: sticky; top: 0; z-index: 10; font-weight: bold; }
         
+        /* 🔴 모달 내부 헤더 강제 스타일 적용 🔴 */
+        #detailModal th { background-color: #212529 !important; color: #ffffff !important; }
+
         td { padding: 12px; border-bottom: 1px solid #e9ecef; text-align: center; vertical-align: middle; }
         tr:hover { background-color: #f1f3f5; cursor: pointer; }
         
