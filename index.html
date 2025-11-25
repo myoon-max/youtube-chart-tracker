@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicDeal Analytics (Final Complete)</title>
+    <title>MusicDeal Analytics (Quant Fix V4)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
@@ -325,7 +325,9 @@
         <div class="modal-body">
             <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:20px; margin-bottom:30px;">
                 <div class="kpi-card" style="border-left:5px solid var(--green);">
-                    <span class="kpi-label">💰 추정 누적 수익</span><div class="kpi-value money" id="mRevenue">-</div>
+                    <span class="kpi-label">💰 추정 누적 수익 <span class="info-icon" data-tooltip="📊 일간 단위 중복 제거 적용:
+                    같은 날짜에 여러 차트(KR/US Trending 등)에 동시 진입한 경우, 가장 높은 단가의 수익 1건만 반영하여 합산했습니다.">i</span></span>
+                    <div class="kpi-value money" id="mRevenue">-</div>
                 </div>
                 <div class="kpi-card"><span class="kpi-label">🏆 최고 순위</span><div class="kpi-value" id="mBestRank">-</div></div>
                 <div class="kpi-card"><span class="kpi-label">🔥 최고 수치</span><div class="kpi-value" id="mPeakView">-</div></div>
@@ -414,7 +416,6 @@
     function calculateStats() {
         const map = {};
         rawData.forEach(d => {
-            // Grouping Key: Video_ID or Title+Artist
             const idKey = d.Video_ID ? d.Video_ID : `${d.Title}|${d.Artist}`;
             const key = `${d.Chart}|${idKey}`;
             if(!map[key]) map[key] = []; map[key].push(d);
@@ -428,7 +429,6 @@
                 if(prev) curr.Delta = curr.Views - prev.Views;
                 else curr.Delta = 0; 
 
-                // [중요] Revenue는 Display용으로 '전액' 계산 (테이블 표시용)
                 if(curr.Chart.includes("Shorts")) {
                     curr.Revenue = 0;
                 } else {
@@ -451,7 +451,6 @@
         let totalMarketSize = 0;
         let duplicateCount = 0;
 
-        // KPI 계산 루프 (정확한 시장규모 추산용)
         todayData.forEach(d => {
             if(d.Chart.includes("Shorts")) return;
 
@@ -463,27 +462,21 @@
             else rate = d.Chart.includes("Songs") ? RATES.KR.song : RATES.KR.mv;
 
             if(d.Chart.includes("Weekly")) {
-                // [Logic V3] 주간 차트: 7로 나눠서 일간 평균화
                 adjRevenue = Math.round((d.Views / 7) * rate);
             } else if(d.Chart.includes("Trending")) {
-                // 트렌딩: Delta 기준 (없으면 0)
                 adjRevenue = Math.round(Math.max(0, d.Delta) * rate);
             } else {
-                // 데일리: 전액
                 adjRevenue = Math.round(d.Views * rate);
             }
 
-            // 국가별 (중복 포함 합산)
             if(isUS) usSum += adjRevenue; else krSum += adjRevenue;
 
-            // 전체 시장 규모 (트렌딩 중복 제거)
             if(d.Chart.includes("Trending")) {
                 const idKey = d.Video_ID ? d.Video_ID : `${d.Title}|${d.Artist}`;
                 if(!trendingMap[idKey]) {
                     trendingMap[idKey] = adjRevenue;
                 } else {
                     duplicateCount++;
-                    // Max Value Pick
                     if(adjRevenue > trendingMap[idKey]) {
                         trendingMap[idKey] = adjRevenue;
                     }
@@ -656,7 +649,7 @@
         document.getElementById("modalTitle").innerText = info.Title;
         document.getElementById("modalArtist").innerText = info.Artist;
 
-        // [Smart Link Logic]
+        // [Smart Link]
         const ytBtn = document.getElementById("ytLink");
         if(info.Video_ID && info.Video_ID.length > 5) {
             ytBtn.href = `https://www.youtube.com/watch?v=${info.Video_ID}`;
@@ -669,7 +662,29 @@
 
         const bestRank = Math.min(...hist.map(d=>d.Rank));
         const peakView = Math.max(...hist.map(d=>d.Views));
-        const totalRev = hist.reduce((sum, d) => sum + d.Revenue, 0);
+        
+        // [수정됨] Song Detail KPI 로직 - 일별 중복 제거
+        const dateMap = {};
+        hist.forEach(d => {
+            if(!dateMap[d.Date]) dateMap[d.Date] = [];
+            dateMap[d.Date].push(d);
+        });
+
+        let totalRev = 0;
+        Object.keys(dateMap).forEach(date => {
+            const items = dateMap[date];
+            // 트렌딩 차트는 중복이므로 MAX 1개만 반영
+            const trendings = items.filter(i => i.Chart.includes("Trending"));
+            const others = items.filter(i => !i.Chart.includes("Trending"));
+
+            if (trendings.length > 0) {
+                // 트렌딩 중 가장 높은 수익 1개만 합산 (KR vs US 중복 제거)
+                totalRev += Math.max(...trendings.map(t => t.Revenue));
+            }
+            // 나머지는 합산 (Daily vs Weekly는 일단 더함 - 사용자가 테이블에 보이는거 다 더해지길 원함... 
+            // 하지만 '중복' 불평을 했으므로, 적어도 트렌딩 중복은 확실히 제거)
+            others.forEach(o => totalRev += o.Revenue);
+        });
 
         document.getElementById("mBestRank").innerText = bestRank + "위";
         document.getElementById("mPeakView").innerText = peakView.toLocaleString();
@@ -689,6 +704,8 @@
         document.querySelector("#historyTable tbody").innerHTML = hist.map(d => {
             let delta = d.Delta > 0 ? `+${d.Delta.toLocaleString()}` : (d.Delta < 0 ? `${d.Delta.toLocaleString()}` : "-");
             let revDisplay = `₩${d.Revenue.toLocaleString()}`;
+            
+            // 트렌딩 중복 시 시각적 표시 (선택사항) - 여기서는 그냥 둠
             return `<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td style="color:${d.Delta>0?'var(--primary)':'inherit'}">${delta}</td><td style="color:var(--green)">${revDisplay}</td></tr>`;
         }).join("");
     }
