@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicDeal Analytics (Quant Fix V4)</title>
+    <title>MusicDeal Analytics (Real Daily Value)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
@@ -153,10 +153,10 @@
         .info-icon:hover::after {
             content: attr(data-tooltip);
             position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.9); color: #fff; padding: 12px 16px; border-radius: 8px;
-            font-size: 0.85rem; white-space: pre-line; width: 360px; z-index: 100;
-            font-weight: normal; line-height: 1.6; text-align: left;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.3); pointer-events: none;
+            background: rgba(0,0,0,0.9); color: #fff; padding: 10px 14px; border-radius: 6px;
+            font-size: 0.8rem; white-space: pre-line; width: 320px; z-index: 100;
+            font-weight: normal; line-height: 1.5; text-align: left;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
 
         /* 유틸 */
@@ -199,7 +199,7 @@
             실제 유튜브 전체 트래픽의 90% 이상은 차트 밖의 'Long-tail(롱테일)' 영역에서 발생하므로, 실제 시장 규모는 이 수치의 최소 10배 이상입니다.
 
             [📊 퀀트 집계 로직]
-            1. Daily MV: 조회수 × 단가 (100% 반영)
+            1. Daily MV: 조회수 × 단가
             2. Weekly Chart: (주간조회수 ÷ 7) × 단가 (일간 안분)
             3. Trending: 일간 증감분(Delta) × 단가
             4. 중복 제거: KR/US 동시 진입 시 높은 단가(미국) 1회 적용">i</span></span>
@@ -254,7 +254,7 @@
             </div>
             <div class="table-container">
                 <table id="dailyTable">
-                    <thead><tr><th>차트</th><th>순위</th><th>제목</th><th>아티스트</th><th>조회수 (일간/주간)</th><th>전일 대비 (Delta)</th><th>예상 수익 (전액 표시)</th></tr></thead>
+                    <thead><tr><th>차트</th><th>순위</th><th>제목</th><th>아티스트</th><th>조회수 (일간/주간)</th><th>전일 대비 (Delta)</th><th>예상 수익 (Daily Value)</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
@@ -306,7 +306,8 @@
             <span class="price-tag">🇺🇸 Art Track: <span>₩10</span></span>
             <span class="price-tag">🇺🇸 MV Long: <span>₩4</span></span>
         </div>
-        <p>* 테이블에는 <b>전체 조회수(Full Value)</b>가 표시되며, 상단 KPI(시장규모) 계산 시에는 <b>주간 차트 일할(1/7) 계산</b> 및 중복 제거가 적용됩니다.</p>
+        <p>* 모든 테이블과 지표는 <b>'실질 일간 창출 가치(Daily Generated Value)'</b> 기준으로 표시됩니다.</p>
+        <p>- Trending: 일간 증감분(Delta) 반영 | Weekly: 일할 계산(1/7) 반영</p>
     </div>
 </div>
 
@@ -339,7 +340,7 @@
             <div class="card" style="margin-top:60px; padding:0; border:none; box-shadow:none;">
                 <h3 style="margin-bottom:15px; color:#000;">📋 상세 이력</h3>
                 <div class="table-container">
-                    <table id="historyTable"><thead><tr><th>날짜</th><th>차트</th><th>순위</th><th>수치</th><th>증감</th><th>수익</th></tr></thead><tbody></tbody></table>
+                    <table id="historyTable"><thead><tr><th>날짜</th><th>차트</th><th>순위</th><th>수치</th><th>증감</th><th>수익 (Daily)</th></tr></thead><tbody></tbody></table>
                 </div>
             </div>
         </div>
@@ -403,7 +404,6 @@
             let title = getCol(3);
             let artist = getCol(4);
             
-            // Video_ID 없는 경우 처리 (스마트 링크용)
             if(!vid || vid.length < 5) vid = null; 
 
             data.push({
@@ -429,6 +429,7 @@
                 if(prev) curr.Delta = curr.Views - prev.Views;
                 else curr.Delta = 0; 
 
+                // [수정] 모든 차트의 Revenue를 '실질 일간 가치'로 계산하여 저장
                 if(curr.Chart.includes("Shorts")) {
                     curr.Revenue = 0;
                 } else {
@@ -438,7 +439,16 @@
                     } else if(curr.Chart.includes("KR")) {
                         rate = curr.Chart.includes("Songs") ? RATES.KR.song : RATES.KR.mv;
                     }
-                    curr.Revenue = Math.round(curr.Views * rate);
+
+                    if(curr.Chart.includes("Weekly")) {
+                        curr.Revenue = Math.round((curr.Views / 7) * rate); // 일할 계산
+                    } else if(curr.Chart.includes("Trending")) {
+                        // Delta가 음수면 0원 처리
+                        curr.Revenue = Math.round(Math.max(0, curr.Delta) * rate); 
+                    } else {
+                        // Daily MV/Songs
+                        curr.Revenue = Math.round(curr.Views * rate);
+                    }
                 }
             }
         });
@@ -454,35 +464,24 @@
         todayData.forEach(d => {
             if(d.Chart.includes("Shorts")) return;
 
-            let adjRevenue = 0;
-            let rate = 0;
-            const isUS = d.Chart.includes("US");
+            let rev = d.Revenue; // 이미 위에서 일간 가치로 계산됨
             
-            if(isUS) rate = d.Chart.includes("Songs") ? RATES.US.song : RATES.US.mv;
-            else rate = d.Chart.includes("Songs") ? RATES.KR.song : RATES.KR.mv;
+            // 국가별 합계 (중복 허용)
+            if(d.Chart.includes("US")) usSum += rev; else krSum += rev;
 
-            if(d.Chart.includes("Weekly")) {
-                adjRevenue = Math.round((d.Views / 7) * rate);
-            } else if(d.Chart.includes("Trending")) {
-                adjRevenue = Math.round(Math.max(0, d.Delta) * rate);
-            } else {
-                adjRevenue = Math.round(d.Views * rate);
-            }
-
-            if(isUS) usSum += adjRevenue; else krSum += adjRevenue;
-
+            // 전체 시장 규모 (트렌딩 중복 제거)
             if(d.Chart.includes("Trending")) {
                 const idKey = d.Video_ID ? d.Video_ID : `${d.Title}|${d.Artist}`;
                 if(!trendingMap[idKey]) {
-                    trendingMap[idKey] = adjRevenue;
+                    trendingMap[idKey] = rev;
                 } else {
                     duplicateCount++;
-                    if(adjRevenue > trendingMap[idKey]) {
-                        trendingMap[idKey] = adjRevenue;
+                    if(rev > trendingMap[idKey]) {
+                        trendingMap[idKey] = rev;
                     }
                 }
             } else {
-                totalMarketSize += adjRevenue;
+                totalMarketSize += rev;
             }
         });
 
@@ -538,7 +537,7 @@
 
         let html = `
             <tr class="sum-row">
-                <td colspan="6">∑ 선택된 항목 합계 (Full Value Sum)</td>
+                <td colspan="6">∑ 선택된 항목 합계 (Daily Value Sum)</td>
                 <td style="color:#32D74B">₩${totalRev.toLocaleString()}</td>
             </tr>
         `;
@@ -553,7 +552,6 @@
         tbody.innerHTML = html || `<tr><td colspan="7" style="text-align:center; padding:30px; color:#666;">데이터 없음</td></tr>`;
     }
 
-    // Trend, Cross, Shorts, LongRun functions...
     function renderTrend() {
         const tbody = document.querySelector("#trendTable tbody");
         const stats = {};
@@ -649,7 +647,6 @@
         document.getElementById("modalTitle").innerText = info.Title;
         document.getElementById("modalArtist").innerText = info.Artist;
 
-        // [Smart Link]
         const ytBtn = document.getElementById("ytLink");
         if(info.Video_ID && info.Video_ID.length > 5) {
             ytBtn.href = `https://www.youtube.com/watch?v=${info.Video_ID}`;
@@ -663,7 +660,7 @@
         const bestRank = Math.min(...hist.map(d=>d.Rank));
         const peakView = Math.max(...hist.map(d=>d.Views));
         
-        // [수정됨] Song Detail KPI 로직 - 일별 중복 제거
+        // [누적 수익 계산 로직] 일별 그룹핑 -> 중복 제거 -> 합산
         const dateMap = {};
         hist.forEach(d => {
             if(!dateMap[d.Date]) dateMap[d.Date] = [];
@@ -673,16 +670,14 @@
         let totalRev = 0;
         Object.keys(dateMap).forEach(date => {
             const items = dateMap[date];
-            // 트렌딩 차트는 중복이므로 MAX 1개만 반영
             const trendings = items.filter(i => i.Chart.includes("Trending"));
             const others = items.filter(i => !i.Chart.includes("Trending"));
 
+            // 트렌딩 중복 제거 (가장 높은 수익 1개만 반영)
             if (trendings.length > 0) {
-                // 트렌딩 중 가장 높은 수익 1개만 합산 (KR vs US 중복 제거)
                 totalRev += Math.max(...trendings.map(t => t.Revenue));
             }
-            // 나머지는 합산 (Daily vs Weekly는 일단 더함 - 사용자가 테이블에 보이는거 다 더해지길 원함... 
-            // 하지만 '중복' 불평을 했으므로, 적어도 트렌딩 중복은 확실히 제거)
+            // 나머지는 단순 합산 (일할계산된 Weekly, Daily)
             others.forEach(o => totalRev += o.Revenue);
         });
 
@@ -704,8 +699,6 @@
         document.querySelector("#historyTable tbody").innerHTML = hist.map(d => {
             let delta = d.Delta > 0 ? `+${d.Delta.toLocaleString()}` : (d.Delta < 0 ? `${d.Delta.toLocaleString()}` : "-");
             let revDisplay = `₩${d.Revenue.toLocaleString()}`;
-            
-            // 트렌딩 중복 시 시각적 표시 (선택사항) - 여기서는 그냥 둠
             return `<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td style="color:${d.Delta>0?'var(--primary)':'inherit'}">${delta}</td><td style="color:var(--green)">${revDisplay}</td></tr>`;
         }).join("");
     }
