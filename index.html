@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicDeal Analytics (Real Daily Value)</title>
+    <title>MusicDeal Analytics (No Missing Rows)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
@@ -199,7 +199,7 @@
             실제 유튜브 전체 트래픽의 90% 이상은 차트 밖의 'Long-tail(롱테일)' 영역에서 발생하므로, 실제 시장 규모는 이 수치의 최소 10배 이상입니다.
 
             [📊 퀀트 집계 로직]
-            1. Daily MV: 조회수 × 단가
+            1. Daily MV: 조회수 × 단가 (100% 반영)
             2. Weekly Chart: (주간조회수 ÷ 7) × 단가 (일간 안분)
             3. Trending: 일간 증감분(Delta) × 단가
             4. 중복 제거: KR/US 동시 진입 시 높은 단가(미국) 1회 적용">i</span></span>
@@ -429,7 +429,6 @@
                 if(prev) curr.Delta = curr.Views - prev.Views;
                 else curr.Delta = 0; 
 
-                // [수정] 모든 차트의 Revenue를 '실질 일간 가치'로 계산하여 저장
                 if(curr.Chart.includes("Shorts")) {
                     curr.Revenue = 0;
                 } else {
@@ -441,12 +440,10 @@
                     }
 
                     if(curr.Chart.includes("Weekly")) {
-                        curr.Revenue = Math.round((curr.Views / 7) * rate); // 일할 계산
+                        curr.Revenue = Math.round((curr.Views / 7) * rate); 
                     } else if(curr.Chart.includes("Trending")) {
-                        // Delta가 음수면 0원 처리
                         curr.Revenue = Math.round(Math.max(0, curr.Delta) * rate); 
                     } else {
-                        // Daily MV/Songs
                         curr.Revenue = Math.round(curr.Views * rate);
                     }
                 }
@@ -464,12 +461,10 @@
         todayData.forEach(d => {
             if(d.Chart.includes("Shorts")) return;
 
-            let rev = d.Revenue; // 이미 위에서 일간 가치로 계산됨
+            let rev = d.Revenue; 
             
-            // 국가별 합계 (중복 허용)
             if(d.Chart.includes("US")) usSum += rev; else krSum += rev;
 
-            // 전체 시장 규모 (트렌딩 중복 제거)
             if(d.Chart.includes("Trending")) {
                 const idKey = d.Video_ID ? d.Video_ID : `${d.Title}|${d.Artist}`;
                 if(!trendingMap[idKey]) {
@@ -528,10 +523,19 @@
         const search = document.getElementById("dailySearch").value.toLowerCase();
         const tbody = document.querySelector("#dailyTable tbody");
         
+        // [수정] 필터링 로직 간소화 - 있는 데이터는 무조건 표시
         let data = rawData.filter(d => d.Date === date);
+        
         if(country !== "ALL") data = data.filter(d => d.Chart.startsWith(country));
         if(chartFilter !== "ALL") data = data.filter(d => d.Chart === chartFilter);
         if(search) data = data.filter(d => d.Title.toLowerCase().includes(search) || d.Artist.toLowerCase().includes(search));
+
+        // 정렬: 차트 이름순 -> 랭크순 (차트별 1~100위 정렬 보장)
+        data.sort((a,b) => {
+            if(a.Chart < b.Chart) return -1;
+            if(a.Chart > b.Chart) return 1;
+            return a.Rank - b.Rank;
+        });
 
         const totalRev = data.reduce((acc, d) => acc + d.Revenue, 0);
 
@@ -660,7 +664,6 @@
         const bestRank = Math.min(...hist.map(d=>d.Rank));
         const peakView = Math.max(...hist.map(d=>d.Views));
         
-        // [누적 수익 계산 로직] 일별 그룹핑 -> 중복 제거 -> 합산
         const dateMap = {};
         hist.forEach(d => {
             if(!dateMap[d.Date]) dateMap[d.Date] = [];
@@ -673,11 +676,9 @@
             const trendings = items.filter(i => i.Chart.includes("Trending"));
             const others = items.filter(i => !i.Chart.includes("Trending"));
 
-            // 트렌딩 중복 제거 (가장 높은 수익 1개만 반영)
             if (trendings.length > 0) {
                 totalRev += Math.max(...trendings.map(t => t.Revenue));
             }
-            // 나머지는 단순 합산 (일할계산된 Weekly, Daily)
             others.forEach(o => totalRev += o.Revenue);
         });
 
@@ -692,7 +693,8 @@
         const dates = [...new Set(hist.map(d=>d.Date))].sort();
         const charts = [...new Set(hist.map(d=>d.Chart))];
         const colors = ['#E62117', '#1A73E8', '#F9A825', '#2E7D32'];
-        const mkDs = (key) => charts.map((c,i) => ({ label: c, data: dates.map(dt => { const item=hist.find(h=>h.Date===dt&&h.Chart===c); return item?item[key]:null; }), borderColor:colors[i%4], tension:0.4, fill:false }));
+        // [수정] 차트 데이터 매핑 시 'Raw Views' 사용 (화면에 정상적으로 보이도록)
+        const mkDs = (key) => charts.map((c,i) => ({ label: c, data: dates.map(dt => { const item=hist.find(h=>h.Date===dt&&h.Chart===c); return item?item[key]:null; }), borderColor:colors[i%4], tension:0.4, fill:false, spanGaps: true }));
         vChart = new Chart(document.getElementById('viewChart'), { type:'line', data:{labels:dates, datasets:mkDs('Views')}, options:{responsive:true, maintainAspectRatio:false} });
         rChart = new Chart(document.getElementById('rankChart'), { type:'line', data:{labels:dates, datasets:mkDs('Rank')}, options:{responsive:true, maintainAspectRatio:false, scales:{y:{reverse:true}}} });
         
