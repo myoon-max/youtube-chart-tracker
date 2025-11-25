@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicDeal Analytics (Pro)</title>
+    <title>MusicDeal Analytics (Final Complete)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
@@ -153,10 +153,10 @@
         .info-icon:hover::after {
             content: attr(data-tooltip);
             position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.9); color: #fff; padding: 10px 14px; border-radius: 6px;
-            font-size: 0.8rem; white-space: pre-line; width: 320px; z-index: 100;
-            font-weight: normal; line-height: 1.5; text-align: left;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            background: rgba(0,0,0,0.9); color: #fff; padding: 12px 16px; border-radius: 8px;
+            font-size: 0.85rem; white-space: pre-line; width: 360px; z-index: 100;
+            font-weight: normal; line-height: 1.6; text-align: left;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3); pointer-events: none;
         }
 
         /* 유틸 */
@@ -193,13 +193,16 @@
 
     <div class="summary-grid">
         <div class="kpi-card" style="border-top: 4px solid var(--green);">
-            <span class="kpi-label">💰 Market Size (Top 100 Only) <span class="info-icon" data-tooltip="📊 본 지표는 '차트 진입곡(Top 100)' 만을 집계한 수치입니다.
-            실제 유튜브 전체 시장(Long-tail 포함) 규모는 이보다 훨씬 큽니다.
+            <span class="kpi-label">💰 Market Size (Top 100 Only) <span class="info-icon" data-tooltip="📉 왜 전체 시장보다 수치가 작나요?
             
-            [계산 로직]
-            1. Daily MV: 조회수 × 단가
-            2. Weekly Chart: (주간조회수 ÷ 7) × 단가
-            3. Trending: 일간 증감분 × 단가">i</span></span>
+            본 데이터는 'Top 100 차트 진입곡'만을 집계합니다.
+            실제 유튜브 전체 트래픽의 90% 이상은 차트 밖의 'Long-tail(롱테일)' 영역에서 발생하므로, 실제 시장 규모는 이 수치의 최소 10배 이상입니다.
+
+            [📊 퀀트 집계 로직]
+            1. Daily MV: 조회수 × 단가 (100% 반영)
+            2. Weekly Chart: (주간조회수 ÷ 7) × 단가 (일간 안분)
+            3. Trending: 일간 증감분(Delta) × 단가
+            4. 중복 제거: KR/US 동시 진입 시 높은 단가(미국) 1회 적용">i</span></span>
             <div class="kpi-value money" id="total-revenue">-</div>
             <div class="kpi-sub">차트 내 곡들의 일간 추정 매출 합계</div>
         </div>
@@ -398,7 +401,7 @@
             let title = getCol(3);
             let artist = getCol(4);
             
-            // Video_ID 없는 경우 처리 (나중에 스마트 링크용)
+            // Video_ID 없는 경우 처리 (스마트 링크용)
             if(!vid || vid.length < 5) vid = null; 
 
             data.push({
@@ -425,7 +428,7 @@
                 if(prev) curr.Delta = curr.Views - prev.Views;
                 else curr.Delta = 0; 
 
-                // [중요 수정] Revenue는 Display용으로 '전액' 계산
+                // [중요] Revenue는 Display용으로 '전액' 계산 (테이블 표시용)
                 if(curr.Chart.includes("Shorts")) {
                     curr.Revenue = 0;
                 } else {
@@ -435,7 +438,6 @@
                     } else if(curr.Chart.includes("KR")) {
                         rate = curr.Chart.includes("Songs") ? RATES.KR.song : RATES.KR.mv;
                     }
-                    // 테이블에는 있는 그대로 보여준다 (사용자 요청)
                     curr.Revenue = Math.round(curr.Views * rate);
                 }
             }
@@ -449,7 +451,7 @@
         let totalMarketSize = 0;
         let duplicateCount = 0;
 
-        // KPI 계산 루프 (테이블과 별개로 '정확한' 시장규모 추산)
+        // KPI 계산 루프 (정확한 시장규모 추산용)
         todayData.forEach(d => {
             if(d.Chart.includes("Shorts")) return;
 
@@ -551,7 +553,6 @@
         html += data.map(d => {
             const idKey = d.Video_ID ? d.Video_ID : `${d.Artist}|${d.Title}`; 
             let delta = d.Delta > 0 ? `<span class="rank-up">▲${d.Delta.toLocaleString()}</span>` : (d.Delta < 0 ? `<span class="rank-down">▼${Math.abs(d.Delta).toLocaleString()}</span>` : "-");
-            // 테이블에는 0원이어도 계산된 값 그대로 표시
             let revStr = `₩${d.Revenue.toLocaleString()}`;
             return `<tr onclick="openDetail('${idKey}')">
                 <td>${d.Chart}</td><td>${d.Rank}</td><td class="song-title">${d.Title}</td><td>${d.Artist}</td><td style="font-weight:bold">${d.Views.toLocaleString()}</td><td>${delta}</td><td class="money-text">${revStr}</td></tr>`;
