@@ -209,7 +209,7 @@ def scrape_youtube_chart(chart_name, url, driver):
             
     return data_list
 
-# 2. [수정됨] 빌보드 3종 통합 크롤러 (Selenium + 개선된 선택자)
+# 2. [수정됨] 빌보드 3종 통합 크롤러 (Selenium + 스크린샷 기반 클래스 수정)
 def scrape_billboard_official(driver, chart_key, url):
     print(f"🇺🇸 Scraping {chart_key} (Official/Selenium)...")
     data = []
@@ -217,44 +217,59 @@ def scrape_billboard_official(driver, chart_key, url):
 
     try:
         driver.get(url)
-        # 페이지 로딩 및 요소 대기 (최대 15초)
-        wait = WebDriverWait(driver, 15)
+        # [중요] 스크롤 로직 추가 (빌보드는 스크롤 안하면 데이터 로딩 안됨)
+        last_height = driver.execute_script("return document.body.scrollHeight")
+        # 조금씩 내리면서 로딩 유도
+        for i in range(1, 5):
+            driver.execute_script(f"window.scrollTo(0, {i * 1000});")
+            time.sleep(1)
         
+        # 마지막으로 맨 아래로
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3) 
+
         # 차트 행 컨테이너 대기
         try:
+            wait = WebDriverWait(driver, 15)
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "o-chart-results-list-row-container")))
         except:
-            print(f"⚠️ {chart_key}: Timeout waiting for chart content. Page might be blocked.")
+            print(f"⚠️ {chart_key}: Timeout or Page Blocked.")
             return []
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
-        # [핵심] 빌보드 차트의 각 행(Row) 선택 (구조 기반)
+        # [수정] 스크린샷 1번의 컨테이너 클래스 사용
         rows = soup.select('div.o-chart-results-list-row-container')
         
+        print(f"   -> Found {len(rows)} raw rows.")
+
         for idx, row in enumerate(rows):
             try:
                 # 1. 순위 (Rank)
-                # 보통 span 안에 숫자가 있음. 구조상 첫 번째 span 중 숫자만 있는 것
-                rank_elem = row.select_one('span.c-label')
-                rank_text = rank_elem.get_text(strip=True) if rank_elem else str(idx + 1)
-                rank = int(rank_text) if rank_text.isdigit() else (idx + 1)
+                # 스크린샷 1번: 1등 '2'는 span.c-label.a-font-primary-bold-l 안에 있음
+                rank_elem = row.select_one('span.c-label.a-font-primary-bold-l')
+                if rank_elem:
+                    rank_text = rank_elem.get_text(strip=True)
+                    rank = int(rank_text) if rank_text.isdigit() else (idx + 1)
+                else:
+                    rank = idx + 1
                 
-                # 2. 제목 (Title) - h3 태그, 아이디가 title-of-a-story 인 경우가 대다수
-                title_tag = row.select_one('h3#title-of-a-story')
-                if not title_tag: # 혹시 ID가 바뀐 경우 대비
-                    title_tag = row.select_one('li.lrv-u-width-100p h3')
-                
+                # 2. 제목 (Title) 
+                # 스크린샷 4번: h3 태그에 'c-title' 클래스 확인됨 (ID 대신 클래스 사용)
+                title_tag = row.select_one('h3.c-title')
                 title = title_tag.get_text(strip=True) if title_tag else "Unknown"
                 
                 # 3. 가수 (Artist)
-                # Title(h3)의 부모(li) 안에서, h3 바로 뒤따라오는 span 찾기
+                # 스크린샷 4번: h3 바로 아래 span.c-label.a-no-trucate 가 아티스트임
                 artist = "Unknown"
                 if title_tag:
+                    # h3 바로 다음에 오는 형제 요소 찾기 (혹은 같은 li 안의 span 찾기)
+                    # 구조상: li > h3 ... span
+                    # title_tag의 부모 li를 찾고 그 안에서 c-label.a-no-trucate 찾기
                     parent_li = title_tag.find_parent('li')
                     if parent_li:
-                        # h3가 아닌 span 중 첫번째가 보통 아티스트
-                        artist_span = parent_li.select_one('span.c-label')
+                        # a-no-trucate 클래스가 아티스트명에 붙어있음 (스크린샷 4)
+                        artist_span = parent_li.select_one('span.c-label.a-no-trucate')
                         if artist_span:
                             artist = artist_span.get_text(strip=True)
 
