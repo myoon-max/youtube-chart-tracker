@@ -460,7 +460,7 @@ if __name__ == "__main__":
         webhook = os.environ.get("APPS_SCRIPT_WEBHOOK")
         
         if final_data and webhook:
-            chunk_size = 2000
+            chunk_size = 4000
             for i in range(0, len(final_data), chunk_size):
                 chunk = final_data[i:i+chunk_size]
                 try:
