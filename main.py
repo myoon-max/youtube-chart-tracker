@@ -11,6 +11,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # ==========================================
 # [PART 1] 설정 및 URL 정의
@@ -40,7 +42,6 @@ BILLBOARD_URLS = {
 }
 
 # 3. 기타 플랫폼 (Requests & Kworb)
-# 주의: Billboard는 위에서 별도 처리하므로 여기에는 Spotify만 남김
 EXTRA_URLS = {
     "Melon_Daily_Top100": "https://www.melon.com/chart/day/index.htm",
     "Genie_Daily_Top200": "https://www.genie.co.kr/chart/top200",
@@ -69,13 +70,14 @@ def clean_text(text):
 
 def get_driver():
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--headless=new") # 헤드리스 모드 유지
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--lang=en-US")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36")
+    # 차단 방지를 위한 User-Agent 설정
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
     
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
@@ -207,42 +209,62 @@ def scrape_youtube_chart(chart_name, url, driver):
             
     return data_list
 
-# 2. [수정됨] 빌보드 3종 통합 크롤러 (Selenium)
+# 2. [수정됨] 빌보드 3종 통합 크롤러 (Selenium + 개선된 선택자)
 def scrape_billboard_official(driver, chart_key, url):
-    print(f"🇺🇸 Scraping {chart_key} (Official)...")
+    print(f"🇺🇸 Scraping {chart_key} (Official/Selenium)...")
     data = []
     today = datetime.now().strftime("%Y-%m-%d")
 
     try:
         driver.get(url)
-        time.sleep(5) # 페이지 로딩 대기
+        # 페이지 로딩 및 요소 대기 (최대 15초)
+        wait = WebDriverWait(driver, 15)
+        
+        # 차트 행 컨테이너 대기
+        try:
+            wait.until(EC.presence_of_element_located((By.CLASS_NAME, "o-chart-results-list-row-container")))
+        except:
+            print(f"⚠️ {chart_key}: Timeout waiting for chart content. Page might be blocked.")
+            return []
+
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
-        # Billboard 차트 공통 컨테이너
+        # [핵심] 빌보드 차트의 각 행(Row) 선택 (구조 기반)
         rows = soup.select('div.o-chart-results-list-row-container')
         
         for idx, row in enumerate(rows):
             try:
-                # 1. 순위
-                rank_tag = row.select_one('span.c-label.a-font-primary-bold-l')
-                rank = int(rank_tag.get_text(strip=True)) if rank_tag else idx + 1
+                # 1. 순위 (Rank)
+                # 보통 span 안에 숫자가 있음. 구조상 첫 번째 span 중 숫자만 있는 것
+                rank_elem = row.select_one('span.c-label')
+                rank_text = rank_elem.get_text(strip=True) if rank_elem else str(idx + 1)
+                rank = int(rank_text) if rank_text.isdigit() else (idx + 1)
                 
-                # 2. 제목 (또는 앨범명)
+                # 2. 제목 (Title) - h3 태그, 아이디가 title-of-a-story 인 경우가 대다수
                 title_tag = row.select_one('h3#title-of-a-story')
+                if not title_tag: # 혹시 ID가 바뀐 경우 대비
+                    title_tag = row.select_one('li.lrv-u-width-100p h3')
+                
                 title = title_tag.get_text(strip=True) if title_tag else "Unknown"
                 
-                # 3. 가수
-                artist_container = row.select_one('ul > li > span.c-label.a-no-trucate')
-                artist = artist_container.get_text(strip=True) if artist_container else "Unknown"
+                # 3. 가수 (Artist)
+                # Title(h3)의 부모(li) 안에서, h3 바로 뒤따라오는 span 찾기
+                artist = "Unknown"
+                if title_tag:
+                    parent_li = title_tag.find_parent('li')
+                    if parent_li:
+                        # h3가 아닌 span 중 첫번째가 보통 아티스트
+                        artist_span = parent_li.select_one('span.c-label')
+                        if artist_span:
+                            artist = artist_span.get_text(strip=True)
 
-                # 4. 저장 (Views는 0)
                 data.append({
                     "Date": today, "Chart": chart_key, "Rank": rank,
                     "Title": title, "Artist": artist, "Video_ID": "", "Views": 0
                 })
             except: continue
             
-        print(f"✅ {chart_key}: {len(data)} rows")
+        print(f"✅ {chart_key}: {len(data)} rows captured.")
     except Exception as e:
         print(f"❌ Billboard Error ({chart_key}): {e}")
     return data
@@ -298,18 +320,33 @@ def scrape_genie():
     except Exception as e: print(f"❌ Genie Error: {e}")
     return data
 
-# 5. Kworb Spotify 크롤러 (Requests) - 헤더 추적 방식
+# 5. [수정됨] Kworb Spotify 크롤러 (실제 날짜 파싱 적용)
 def scrape_kworb(chart_key, url):
-    print(f"🟢 Scraping {chart_key} via Kworb...")
+    print(f"🟢 Scraping {chart_key} via Kworb (Parsing real date)...")
     data = []
-    today = datetime.now().strftime("%Y-%m-%d")
-    TARGET_HEADER_KEYWORD = "Streams" # 오직 스포티파이용
+    
+    # 기본값은 오늘 (파싱 실패 대비)
+    chart_date = datetime.now().strftime("%Y-%m-%d")
+    TARGET_HEADER_KEYWORD = "Streams"
 
     try:
         res = requests.get(url)
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, 'html.parser')
         
+        # [핵심 수정] 페이지 상단의 날짜(2025/12/02) 파싱
+        # 스크린샷에 있던 <span class="pagetitle"> 타겟팅
+        title_span = soup.select_one('span.pagetitle')
+        if title_span:
+            title_text = title_span.get_text()
+            # YYYY/MM/DD 형식 추출
+            date_match = re.search(r'(\d{4})/(\d{2})/(\d{2})', title_text)
+            if date_match:
+                chart_date = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
+                print(f"   -> Detected Chart Date: {chart_date}")
+            else:
+                print(f"   -> ⚠️ Date parsing failed, using today: {chart_date}")
+
         table = soup.find('table')
         if not table: return []
 
@@ -321,7 +358,6 @@ def scrape_kworb(chart_key, url):
             first_row = table.find('tr')
             headers = [td.get_text(strip=True) for td in first_row.find_all(['td', 'th'])]
 
-        # 헤더 위치 찾기
         target_idx = -1
         title_idx = -1
         for i, h in enumerate(headers):
@@ -357,11 +393,16 @@ def scrape_kworb(chart_key, url):
                 final_val = int(val_clean) if val_clean else 0
 
                 data.append({
-                    "Date": today, "Chart": chart_key, "Rank": rank,
-                    "Title": title, "Artist": artist, "Video_ID": "", "Views": final_val
+                    "Date": chart_date, # [수정] 실제 파싱된 날짜 사용
+                    "Chart": chart_key,
+                    "Rank": rank,
+                    "Title": title,
+                    "Artist": artist,
+                    "Video_ID": "",
+                    "Views": final_val
                 })
             except: continue
-        print(f"✅ {chart_key}: {len(data)} rows")
+        print(f"✅ {chart_key}: {len(data)} rows (Date: {chart_date})")
     except Exception as e: print(f"❌ Kworb Error ({chart_key}): {e}")
     return data
 
@@ -394,17 +435,18 @@ if __name__ == "__main__":
                 except Exception as e:
                     print(f"⚠️ Error on YouTube {name}: {e}")
             
-            # (2) Billboard Scraping (3 Charts Loop)
+            # (2) Billboard Scraping (Official)
             print("\n>>> Starting Billboard Charts...")
             for b_name, b_url in BILLBOARD_URLS.items():
                 final_data.extend(scrape_billboard_official(driver, b_name, b_url))
 
         except Exception as sel_e:
             print(f"🔥 Selenium Process Error: {sel_e}")
+            print(traceback.format_exc())
         finally:
             if driver: driver.quit()
 
-        # 2. Requests 기반 크롤링 (Melon, Genie, Spotify)
+        # 2. Requests 기반 크롤링 (Melon, Genie, Spotify/Kworb)
         print("\n=== [Domestic & Spotify Charts] ===")
         final_data.extend(scrape_melon())
         final_data.extend(scrape_genie())
@@ -414,7 +456,9 @@ if __name__ == "__main__":
 
         # 3. 데이터 전송
         print(f"\n=== [Sending Data] Total {len(final_data)} rows ===")
+        # Apps Script 웹훅 URL 환경변수 (또는 직접 입력)
         webhook = os.environ.get("APPS_SCRIPT_WEBHOOK")
+        
         if final_data and webhook:
             chunk_size = 2000
             for i in range(0, len(final_data), chunk_size):
@@ -427,7 +471,7 @@ if __name__ == "__main__":
                     print(f"❌ Send Error: {e}")
             print("✨ All Scrapers Completed Successfully!")
         else:
-            print("⚠️ No webhook URL or empty data.")
+            print("⚠️ No webhook URL found or empty data. Check 'APPS_SCRIPT_WEBHOOK' env var.")
 
     except Exception as main_e:
         print("🔥 FATAL ERROR: Script crashed.")
