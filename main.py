@@ -70,13 +70,12 @@ def clean_text(text):
 
 def get_driver():
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new") # 헤드리스 모드 유지
+    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--lang=en-US")
-    # 차단 방지를 위한 User-Agent 설정
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
     
     service = Service(ChromeDriverManager().install())
@@ -122,7 +121,6 @@ def scrape_youtube_chart(chart_name, url, driver):
     time.sleep(5)
     
     data_list = []
-    # [설정] 유튜브는 무조건 오늘 날짜 사용
     today = datetime.now().strftime("%Y-%m-%d")
     
     is_trending = "Trending" in chart_name
@@ -210,24 +208,21 @@ def scrape_youtube_chart(chart_name, url, driver):
             
     return data_list
 
-# 2. [수정됨] 빌보드 3종 통합 크롤러 (오늘 날짜 강제 적용)
+# 2. [수정됨] 빌보드: 스크린샷 기반 선택자 적용 + 날짜 '오늘' 고정
 def scrape_billboard_official(driver, chart_key, url):
-    print(f"🇺🇸 Scraping {chart_key} (Official/Selenium) - Date Forced to Today...")
+    print(f"🇺🇸 Scraping {chart_key} (Official/Selenium)...")
     data = []
-    
-    # [수정 사항] 빌보드 사이트의 날짜가 아니라, 크롤링하는 시점(오늘) 날짜로 고정
+    # [설정] 날짜는 무조건 '오늘'로 저장
     today = datetime.now().strftime("%Y-%m-%d")
 
     try:
         driver.get(url)
-        # [중요] 스크롤 로직 (데이터 로딩 유도)
-        last_height = driver.execute_script("return document.body.scrollHeight")
-        for i in range(1, 5):
+        # 1. 스크롤 로직 추가 (데이터 로딩 보장)
+        for i in range(1, 4):
             driver.execute_script(f"window.scrollTo(0, {i * 1000});")
             time.sleep(1)
-        
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3) 
+        time.sleep(3)
 
         try:
             wait = WebDriverWait(driver, 15)
@@ -237,13 +232,15 @@ def scrape_billboard_official(driver, chart_key, url):
             return []
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
+        
+        # 2. 선택자 변경 (ID 대신 스크린샷에 보이는 Class 사용)
         rows = soup.select('div.o-chart-results-list-row-container')
         
         print(f"   -> Found {len(rows)} raw rows.")
 
         for idx, row in enumerate(rows):
             try:
-                # 1. 순위 (Rank)
+                # Rank
                 rank_elem = row.select_one('span.c-label.a-font-primary-bold-l')
                 if rank_elem:
                     rank_text = rank_elem.get_text(strip=True)
@@ -251,11 +248,11 @@ def scrape_billboard_official(driver, chart_key, url):
                 else:
                     rank = idx + 1
                 
-                # 2. 제목 (Title) 
+                # Title (h3.c-title 사용 -> 스크린샷 4번)
                 title_tag = row.select_one('h3.c-title')
                 title = title_tag.get_text(strip=True) if title_tag else "Unknown"
                 
-                # 3. 가수 (Artist)
+                # Artist (c-label.a-no-trucate 사용 -> 스크린샷 4번)
                 artist = "Unknown"
                 if title_tag:
                     parent_li = title_tag.find_parent('li')
@@ -265,8 +262,13 @@ def scrape_billboard_official(driver, chart_key, url):
                             artist = artist_span.get_text(strip=True)
 
                 data.append({
-                    "Date": today, "Chart": chart_key, "Rank": rank,
-                    "Title": title, "Artist": artist, "Video_ID": "", "Views": 0
+                    "Date": today, # 오늘 날짜 강제
+                    "Chart": chart_key,
+                    "Rank": rank,
+                    "Title": title,
+                    "Artist": artist,
+                    "Video_ID": "",
+                    "Views": 0
                 })
             except: continue
             
@@ -275,13 +277,12 @@ def scrape_billboard_official(driver, chart_key, url):
         print(f"❌ Billboard Error ({chart_key}): {e}")
     return data
 
-# 3. 멜론 크롤러 (Requests)
+# 3. 멜론 크롤러
 def scrape_melon():
     print("🍈 Scraping Melon Daily...")
     url = EXTRA_URLS["Melon_Daily_Top100"]
     headers = {'User-Agent': 'Mozilla/5.0'}
     data = []
-    # [설정] 멜론도 오늘 날짜 고정
     today = datetime.now().strftime("%Y-%m-%d")
 
     try:
@@ -302,12 +303,11 @@ def scrape_melon():
     except Exception as e: print(f"❌ Melon Error: {e}")
     return data
 
-# 4. 지니 크롤러 (Requests)
+# 4. 지니 크롤러
 def scrape_genie():
     print("🧞 Scraping Genie Daily...")
     headers = {'User-Agent': 'Mozilla/5.0'}
     data = []
-    # [설정] 지니도 오늘 날짜 고정
     today = datetime.now().strftime("%Y-%m-%d")
     try:
         for page in range(1, 3):
@@ -328,12 +328,12 @@ def scrape_genie():
     except Exception as e: print(f"❌ Genie Error: {e}")
     return data
 
-# 5. [수정됨] Kworb Spotify 크롤러 (날짜 파싱 제거 -> 오늘 날짜로 강제)
+# 5. [수정됨] Kworb: 날짜 '오늘'로 강제
 def scrape_kworb(chart_key, url):
-    print(f"🟢 Scraping {chart_key} via Kworb (Forcing Today's Date)...")
+    print(f"🟢 Scraping {chart_key} via Kworb (Force Today)...")
     data = []
     
-    # [핵심 수정] 사이트 날짜 파싱 로직을 무시하고, 무조건 오늘 날짜 사용
+    # [설정] 대시보드 노출을 위해 무조건 '오늘' 날짜로 저장
     chart_date = datetime.now().strftime("%Y-%m-%d")
     TARGET_HEADER_KEYWORD = "Streams"
 
@@ -341,11 +341,6 @@ def scrape_kworb(chart_key, url):
         res = requests.get(url)
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, 'html.parser')
-        
-        # [수정됨] 원래 있던 span.pagetitle 파싱 로직 제거됨.
-        # 그냥 chart_date 변수는 위에서 오늘 날짜로 이미 설정됨.
-        print(f"   -> Date used for record: {chart_date}")
-
         table = soup.find('table')
         if not table: return []
 
@@ -392,7 +387,7 @@ def scrape_kworb(chart_key, url):
                 final_val = int(val_clean) if val_clean else 0
 
                 data.append({
-                    "Date": chart_date, # [확인] 오늘 날짜 들어감
+                    "Date": chart_date, # 오늘 날짜 적용
                     "Chart": chart_key,
                     "Rank": rank,
                     "Title": title,
@@ -464,7 +459,7 @@ if __name__ == "__main__":
                 chunk = final_data[i:i+chunk_size]
                 try:
                     requests.post(webhook, json=chunk)
-                    print(f"   -> Chunk {i//chunk_size + 1} sent.")
+                    print(f"  -> Chunk {i//chunk_size + 1} sent.")
                     time.sleep(1)
                 except Exception as e:
                     print(f"❌ Send Error: {e}")
