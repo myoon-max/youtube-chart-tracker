@@ -153,7 +153,14 @@
         .rank-down { color: #1976D2; font-weight: bold; background: #E3F2FD; padding: 2px 6px; border-radius: 4px; }
         .money-text { color: var(--green); font-weight: 800; font-family: 'Montserrat'; }
         .highlight-cut { background: #FFF8E1; font-weight: bold; border-left: 3px solid #FFC107; }
-        .sum-row { background: #333 !important; color: #fff !important; font-weight: bold; }
+        
+        /* [수정] Sum Row 스타일 변경 */
+        .sum-row { 
+            background: #F1F8E9 !important; /* 연한 초록색 배경 */
+            color: #1B5E20 !important; /* 짙은 녹색 글씨 */
+            font-weight: 800 !important; 
+            border-bottom: 2px solid #4CAF50 !important;
+        }
         
         .pf-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; font-weight: bold; display: inline-block; width: 24px; text-align: center; margin-right: 5px; }
         .pf-yt { background-color: var(--primary); }
@@ -316,7 +323,7 @@
             <div class="controls">
                 <h3>🌐 플랫폼 통합 순위 현황</h3>
                 <div style="font-size:0.85rem; color:#666; margin-left:15px; margin-right:auto;">
-                    * 각 플랫폼별 일간 순위를 한눈에 비교합니다. (데이터가 없는 경우 '-' 표시)
+                    * 제목/아티스트가 유사한 곡들을 자동으로 통합하여 보여줍니다. (공백, 괄호 등 무시)
                 </div>
                 <div class="search-wrapper">
                     <span class="search-icon">🔍</span>
@@ -434,11 +441,38 @@
     const ACCESS_KEY = "musicdeal2025"; 
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRR9sg-5znnm3vm2rpUkfkKE4GeYJnUmtW76-5BzjFNeaYnHZ_jLQe2oSCvQLYc861AEgLUs_nqXJgx/pub?gid=0&single=true&output=csv";
     const RATES = { KR: { song: 5.0, mv: 2.5 }, US: { song: 10.0, mv: 4.0 } };
+    
+    // [NEW] 데이터 매칭을 위한 매핑 테이블 (필요 시 여기에 추가)
+    // 예: "JUMP": "뛰어" -> JUMP라는 제목이 오면 "뛰어"로 인식해서 합침
+    const TITLE_ALIASES = {
+        "JUMP": "뛰어",
+        "RUN": "뛰어"
+    };
 
     let rawData = [], uniqueCharts = [];
     let scatterChartInst=null, vChart=null, rChart=null;
     let shortsPeriod = 1;
-    let showRevenue = false; // 기본값 OFF
+    let showRevenue = false; 
+
+    // [NEW] 문자열 정규화 (괄호 제거, 공백 제거, 소문자화)
+    function normalizeText(text) {
+        if (!text) return "";
+        let t = text.toUpperCase(); // 대문자로 통일
+        
+        // 1. 별칭(Alias) 먼저 적용
+        for (const [key, val] of Object.entries(TITLE_ALIASES)) {
+            if (t === key) t = val; // JUMP -> 뛰어
+        }
+
+        // 2. 괄호 및 특수문자 제거 로직
+        // "뛰어 (Live)" -> "뛰어"
+        // "뛰어(JUMP)" -> "뛰어"
+        t = t.replace(/\(.*\)/g, ""); // 소괄호 내용 제거
+        t = t.replace(/\[.*\]/g, ""); // 대괄호 내용 제거
+        t = t.replace(/[^0-9a-zA-Z가-힣]/g, ""); // 특수문자/공백 제거 (한글,영문,숫자만 남김)
+        
+        return t.trim();
+    }
 
     function checkLogin() {
         if(document.getElementById('passwordInput').value === ACCESS_KEY) {
@@ -496,7 +530,7 @@
                 updateChartFilter();
                 updateSummary(lastDate);
                 renderDaily(); 
-                renderUnified(); // [NEW]
+                renderUnified();
                 renderTrend(); renderCross(); renderShortsStrategy(); renderLongRun();
             }
         });
@@ -539,7 +573,6 @@
                 if(prev) curr.Delta = curr.Views - prev.Views;
                 else curr.Delta = 0; 
 
-                // [수익 계산 로직 강화] YouTube가 아니면 무조건 0원
                 const isYoutube = curr.Chart.includes("KR_") || curr.Chart.includes("US_");
                 const isShorts = curr.Chart.includes("Shorts");
                 
@@ -573,7 +606,7 @@
         let duplicateCount = 0;
 
         todayData.forEach(d => {
-            if(d.Revenue === 0) return; // 수익 없는 차트 패스
+            if(d.Revenue === 0) return; 
 
             let rev = d.Revenue; 
             if(d.Chart.includes("US")) usSum += rev; else krSum += rev;
@@ -648,14 +681,14 @@
             return a.Rank - b.Rank;
         });
 
+        // [수정] Sum Row 복구 및 스타일/문구 변경
         const totalRev = data.reduce((acc, d) => acc + d.Revenue, 0);
-
         const colSpan = showRevenue ? 6 : 5;
-        const totalCell = showRevenue ? `<td style="color:#32D74B">₩${totalRev.toLocaleString()}</td>` : '';
+        const totalCell = showRevenue ? `<td class="money-text" style="font-size:1.1rem;">₩${totalRev.toLocaleString()}</td>` : '';
 
         let html = `
             <tr class="sum-row">
-                <td colspan="${colSpan}">∑ 선택된 항목 합계 (YouTube Value Only)</td>
+                <td colspan="${colSpan}" style="text-align:right; padding-right:20px;"> 합계 </td>
                 ${totalCell}
             </tr>
         `;
@@ -672,12 +705,13 @@
             return `<tr onclick="openDetail('${idKey}')">
                 <td>${d.Chart}</td><td>${d.Rank}</td><td class="song-title">${d.Title}</td><td>${d.Artist}</td><td style="font-weight:bold">${d.Views.toLocaleString()}</td><td>${delta}</td>${revCell}</tr>`;
         }).join("");
+        
         tbody.innerHTML = html || `<tr><td colspan="7" style="text-align:center; padding:30px; color:#666;">데이터 없음</td></tr>`;
     }
 
-    // [NEW] Unified Chart Function
+    // [수정] Unified Chart Function에 정규화(Normalization) 적용
     function renderUnified() {
-        const date = rawData[rawData.length-1].Date; // 항상 최신 날짜 기준
+        const date = rawData[rawData.length-1].Date;
         const search = document.getElementById("unifiedSearch").value.toLowerCase();
         const tbody = document.querySelector("#unifiedTable tbody");
         
@@ -685,21 +719,26 @@
         const map = {};
 
         data.forEach(d => {
-            // Key: Title+Artist (Strict Match)
-            const k = `${d.Title}|${d.Artist}`;
-            if(!map[k]) map[k] = { t: d.Title, a: d.Artist, charts: {} };
-            map[k].charts[d.Chart] = d.Rank;
+            // [핵심] 제목과 아티스트를 정규화하여 Key 생성 -> 통합 매칭
+            // 예: "뛰어(JUMP)" -> "뛰어", "Black Pink" -> "BLACKPINK"
+            const normTitle = normalizeText(d.Title);
+            const normArtist = normalizeText(d.Artist);
+            const k = `${normTitle}|${normArtist}`;
+
+            if(!map[k]) {
+                // 화면 표시용으로는 원본 중 가장 깔끔한(짧은) 것을 사용하거나 첫 번째 것 사용
+                map[k] = { t: d.Title, a: d.Artist, charts: {} };
+            }
+            // 랭킹 정보 병합
+            // (같은 플랫폼이 여러개면 더 높은 순위 기록)
+            if (!map[k].charts[d.Chart] || d.Rank < map[k].charts[d.Chart]) {
+                map[k].charts[d.Chart] = d.Rank;
+            }
         });
 
         const rows = Object.values(map);
-        if(search) {
-             // Search Filter
-             // rows is array of objects, need to filter
-        }
-
         const filtered = rows.filter(r => r.t.toLowerCase().includes(search) || r.a.toLowerCase().includes(search));
         
-        // 정렬: 포함된 차트 개수 많은 순 -> 그 중 Melon 순위 높은 순
         filtered.sort((a,b) => {
             const cntA = Object.keys(a.charts).length;
             const cntB = Object.keys(b.charts).length;
@@ -715,7 +754,8 @@
         };
 
         const html = filtered.map(item => {
-            const idKey = `${item.a}|${item.t}`; // For detail view link
+            // 상세보기를 위한 ID는 정규화되지 않은 것 중 대표값을 써야 함. (여기는 단순화)
+            const idKey = `${item.a}|${item.t}`; 
             return `<tr onclick="openDetail('${idKey}')">
                 <td style="text-align:left; padding-left:20px;">
                     <div style="font-weight:bold; font-size:1rem;">${item.t}</div>
@@ -761,9 +801,17 @@
         const data = rawData.filter(d => d.Date === lastDate);
         const map = {};
         data.forEach(d => { 
-            const k = d.Video_ID ? d.Video_ID : `${d.Artist}|${d.Title}`;
-            if(!map[k]) map[k] = { artist: d.Artist, title: d.Title, charts: [], minRank: 999, id: k }; 
-            map[k].charts.push(d.Chart); if(d.Rank < map[k].minRank) map[k].minRank = d.Rank; 
+            // [수정] 크로스 차트에도 정규화 적용
+            const normTitle = normalizeText(d.Title);
+            const normArtist = normalizeText(d.Artist);
+            const k = `${normTitle}|${normArtist}`;
+
+            // 대표 ID는 원본 사용
+            const originKey = d.Video_ID ? d.Video_ID : `${d.Artist}|${d.Title}`;
+            
+            if(!map[k]) map[k] = { artist: d.Artist, title: d.Title, charts: [], minRank: 999, id: originKey }; 
+            map[k].charts.push(d.Chart); 
+            if(d.Rank < map[k].minRank) map[k].minRank = d.Rank; 
         });
         const crosses = Object.values(map).filter(v => v.charts.length > 1).sort((a,b) => b.charts.length - a.charts.length);
         let html = crosses.filter(v => v.title.toLowerCase().includes(search) || v.artist.toLowerCase().includes(search)).map(v => 
