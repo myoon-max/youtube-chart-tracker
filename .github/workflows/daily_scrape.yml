@@ -1,33 +1,32 @@
 name: Daily Music Chart Scraper
 
 on:
-  push:
-    branches: [ "main" ]
   schedule:
-    # 한국 시간 오후 4시 = UTC 오전 7시
-    # (GitHub는 영국 표준시(UTC)를 쓰므로 9시간을 빼야 합니다)
+    # [수정됨] UTC 07:00 = 한국 시간 16:00 (오후 4시)
+    # 기존 오전 9시는 데이터 집계가 덜 된 상태라 누락이 발생하므로 변경함
     - cron: '0 7 * * *'
-  workflow_dispatch: # 수동 실행 버튼
+  
+  # 수동 실행 버튼 (테스트용)
+  workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-
     steps:
-    - name: 체크아웃 (코드 가져오기)
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: 파이썬 설정 (3.9 버전)
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    - name: 라이브러리 설치
-      run: |
-        python -m pip install --upgrade pip
-        pip install selenium webdriver-manager beautifulsoup4 requests pandas
+      - name: Install libraries
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    # ★★★ 아까 이 부분이 없어서 실행이 안 되고 1분 만에 끝난 겁니다 ★★★
-    - name: 크롤러 실행
-      run: |
-        python main.py
+      - name: Run Scraper
+        env:
+          APPS_SCRIPT_WEBHOOK: ${{ secrets.APPS_SCRIPT_WEBHOOK }}
+        run: python main.py
