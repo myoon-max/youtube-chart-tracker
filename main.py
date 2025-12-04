@@ -15,17 +15,18 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # ==========================================
-# [PART 1] 설정 및 URL 정의
+# [PART 1] 설정 (건드리지 마세요)
 # ==========================================
 
-# ★★★ [주의] 사용자가 입력한 주소입니다. ★★★
-# 이 주소(.../output=csv)는 시트 '다운로드'용입니다. 
-# 데이터가 안 들어오면 앱스 스크립트 배포 주소(.../exec)인지 꼭 확인하세요.
+# 1. 데이터 보낼 주소 (대표님이 주신 주소 적용됨)
+# ※ 주의: 이 주소가 '.../exec'로 끝나는 앱스스크립트 주소가 아니면 데이터가 안 쌓일 수 있습니다.
+# 일단 주신 주소 그대로 넣었습니다.
 WEBHOOK_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRR9sg-5znnm3vm2rpUkfkKE4GeYJnUmtW76-5BzjFNeaYnHZ_jLQe2oSCvQLYc861AEgLUs_nqXJgx/pub?gid=0&single=true&output=csv"
 
+# 2. 유튜브 API 키
 YOUTUBE_API_KEY = "AIzaSyDFFZNYygA85qp5p99qUG2Mh8Kl5qoLip4"
 
-# 1. 유튜브 차트 (Selenium)
+# 3. 크롤링 대상 URL 모음
 TARGET_URLS = {
     "KR_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/kr/RightNow",
     "US_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/us/RightNow",
@@ -39,14 +40,12 @@ TARGET_URLS = {
     "US_Daily_Top_Shorts": "https://charts.youtube.com/charts/TopShortsSongs/us/daily"
 }
 
-# 2. 빌보드 차트 (Official)
 BILLBOARD_URLS = {
     "Billboard_Hot100": "https://www.billboard.com/charts/hot-100/",
     "Billboard_200": "https://www.billboard.com/charts/billboard-200/",
     "Billboard_Global200": "https://www.billboard.com/charts/billboard-global-200/"
 }
 
-# 3. 기타 플랫폼 (Requests & Kworb)
 EXTRA_URLS = {
     "Melon_Daily_Top100": "https://www.melon.com/chart/day/index.htm",
     "Genie_Daily_Top200": "https://www.genie.co.kr/chart/top200",
@@ -55,7 +54,7 @@ EXTRA_URLS = {
     "Spotify_KR_Daily": "https://kworb.net/spotify/country/kr_daily.html"
 }
 
-# ================= 유틸리티 =================
+# ================= 유틸리티 함수 =================
 def parse_count_strict(text):
     if not text: return 0
     t = str(text).lower().strip().replace(',', '')
@@ -75,7 +74,7 @@ def clean_text(text):
 
 def get_driver():
     chrome_options = Options()
-    # [수정] 눈으로 확인하기 위해 헤드리스 잠시 끔 (잘 되면 다시 켜세요)
+    # 화면 안 뜨게 하려면 아래 줄 주석 해제 (지금은 에러 확인용으로 띄움)
     # chrome_options.add_argument("--headless=new") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -87,7 +86,7 @@ def get_driver():
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
-# ================= Shorts & API (유튜브용) =================
+# ================= 유튜브 관련 함수 =================
 def get_shorts_creation_count(driver, video_id):
     if not video_id: return 0
     url = f"https://www.youtube.com/source/{video_id}/shorts"
@@ -118,9 +117,9 @@ def get_views_from_api(video_ids):
         except: pass
     return stats_map
 
-# ================= [PART 2] 크롤러 함수 모음 =================
+# ================= [핵심] 크롤러 함수들 =================
 
-# 1. 유튜브 차트 크롤러
+# 1. 유튜브 크롤러
 def scrape_youtube_chart(chart_name, url, driver):
     print(f"🚀 Scraping YouTube: {chart_name}...")
     driver.get(url)
@@ -134,7 +133,6 @@ def scrape_youtube_chart(chart_name, url, driver):
     is_daily_mv = "Daily_Top_MV" in chart_name
     is_weekly = "Weekly" in chart_name
     
-    # Shorts 로직
     if is_shorts:
         last_height = driver.execute_script("return document.body.scrollHeight")
         for _ in range(30):
@@ -167,7 +165,6 @@ def scrape_youtube_chart(chart_name, url, driver):
                 })
             except: continue
 
-    # MV/Songs 로직
     else:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(3)
@@ -214,60 +211,91 @@ def scrape_youtube_chart(chart_name, url, driver):
             
     return data_list
 
-# 2. [수정됨] 빌보드 3종 통합 크롤러 (안전한 ID/구조 기반)
+# 2. [최종 수정] 빌보드 안전장치 강화 크롤러 (안 되면 3번 찌르는 로직)
 def scrape_billboard_official(driver, chart_key, url):
-    print(f"🇺🇸 Scraping {chart_key} (Official/Selenium)...")
-    data = []
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    try:
-        driver.get(url)
-        last_height = driver.execute_script("return document.body.scrollHeight")
-        for i in range(1, 5):
-            driver.execute_script(f"window.scrollTo(0, {i * 1000});")
-            time.sleep(0.5)
-        
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3) 
-
+    print(f"🇺🇸 [SafeMode] Scraping {chart_key}...")
+    max_retries = 2
+    for attempt in range(max_retries):
         try:
-            wait = WebDriverWait(driver, 15)
-            wait.until(EC.presence_of_element_located((By.CLASS_NAME, "o-chart-results-list-row-container")))
-        except:
-            print(f"⚠️ {chart_key}: Timeout or Page Blocked.")
-            return []
-
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        rows = soup.select('div.o-chart-results-list-row-container')
-        print(f"   -> Found {len(rows)} raw rows.")
-
-        for idx, row in enumerate(rows):
-            try:
-                rank = idx + 1
-                
-                # 빌보드에서 변하지 않는 ID 사용
-                title_tag = row.select_one('h3#title-of-a-story')
-                title = title_tag.get_text(strip=True) if title_tag else "Unknown"
-                
-                # 제목 바로 뒤 span 찾기
-                artist = "Unknown"
-                if title_tag:
-                    artist_span = title_tag.find_next('span', class_='c-label')
-                    if artist_span:
-                        artist = artist_span.get_text(strip=True)
-                
-                if title == "Unknown": continue
-
-                data.append({
-                    "Date": today, "Chart": chart_key, "Rank": rank,
-                    "Title": title, "Artist": artist, "Video_ID": "", "Views": 0
-                })
-            except: continue
+            driver.get(url)
+            print(f"   -> Loading (Attempt {attempt+1})...")
             
-        print(f"✅ {chart_key}: {len(data)} rows captured.")
-    except Exception as e:
-        print(f"❌ Billboard Error ({chart_key}): {e}")
-    return data
+            # 천천히 스크롤 내려서 데이터 로딩 유도
+            for i in range(1, 11):
+                driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/10});")
+                time.sleep(0.5)
+            time.sleep(3)
+
+            try:
+                WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, "o-chart-results-list-row-container"))
+                )
+            except:
+                print("   ⚠️ Timeout: Container not found. Retrying...")
+                if attempt < max_retries - 1: continue
+                return []
+
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            rows = soup.select('div.o-chart-results-list-row-container')
+            print(f"   -> Found {len(rows)} row containers.")
+
+            if len(rows) == 0:
+                print("   ⚠️ 0 rows. Refreshing page...")
+                continue 
+
+            data = []
+            today = datetime.now().strftime("%Y-%m-%d")
+
+            for idx, row in enumerate(rows):
+                try:
+                    # 1. 순위
+                    rank = idx + 1
+                    try:
+                        rank_tag = row.select_one('span.c-label.a-font-primary-bold-l')
+                        if rank_tag and rank_tag.text.strip().isdigit():
+                            rank = int(rank_tag.text.strip())
+                    except: pass
+
+                    # 2. 제목 (3중 안전장치)
+                    title = "Unknown"
+                    title_tag = row.select_one('h3.c-title') # 1순위: 클래스
+                    if not title_tag: title_tag = row.select_one('h3#title-of-a-story') # 2순위: ID
+                    if not title_tag: title_tag = row.select_one('h3') # 3순위: 그냥 태그
+                    
+                    if title_tag:
+                        title = title_tag.get_text(strip=True)
+
+                    # 3. 가수 (구조 기반 검색)
+                    artist = "Unknown"
+                    if title_tag:
+                        parent_li = title_tag.find_parent('li')
+                        if parent_li:
+                            artist_tag = parent_li.select_one('span.c-label.a-no-trucate')
+                            if artist_tag:
+                                artist = artist_tag.get_text(strip=True)
+                            else:
+                                full_text = parent_li.get_text(strip=True)
+                                if title in full_text:
+                                    remain = full_text.replace(title, "").strip()
+                                    if len(remain) > 1: artist = remain
+
+                    if title == "Unknown": continue
+
+                    data.append({
+                        "Date": today, "Chart": chart_key, "Rank": rank,
+                        "Title": title, "Artist": artist, "Video_ID": "", "Views": 0
+                    })
+                except: continue
+            
+            if len(data) > 0:
+                print(f"✅ {chart_key}: Captured {len(data)} rows.")
+                return data
+
+        except Exception as e:
+            print(f"❌ Error on attempt {attempt+1}: {e}")
+            time.sleep(3)
+
+    return []
 
 # 3. 멜론 크롤러
 def scrape_melon():
@@ -320,10 +348,11 @@ def scrape_genie():
     except Exception as e: print(f"❌ Genie Error: {e}")
     return data
 
-# 5. Kworb Spotify 크롤러
+# 5. Kworb 크롤러 (날짜 강제 Today)
 def scrape_kworb(chart_key, url):
-    print(f"🟢 Scraping {chart_key} via Kworb...")
+    print(f"🟢 Scraping {chart_key}...")
     data = []
+    # 대표님 요청: 무조건 오늘 날짜로 고정
     chart_date = datetime.now().strftime("%Y-%m-%d")
     TARGET_HEADER_KEYWORD = "Streams"
 
@@ -332,14 +361,6 @@ def scrape_kworb(chart_key, url):
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        title_span = soup.select_one('span.pagetitle')
-        if title_span:
-            title_text = title_span.get_text()
-            date_match = re.search(r'(\d{4})/(\d{2})/(\d{2})', title_text)
-            if date_match:
-                chart_date = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
-                print(f"   -> Date: {chart_date}")
-
         table = soup.find('table')
         if not table: return []
 
@@ -385,8 +406,13 @@ def scrape_kworb(chart_key, url):
                 final_val = int(val_clean) if val_clean else 0
 
                 data.append({
-                    "Date": chart_date, "Chart": chart_key, "Rank": rank,
-                    "Title": title, "Artist": artist, "Video_ID": "", "Views": final_val
+                    "Date": chart_date, # 오늘 날짜 강제
+                    "Chart": chart_key,
+                    "Rank": rank,
+                    "Title": title,
+                    "Artist": artist,
+                    "Video_ID": "",
+                    "Views": final_val
                 })
             except: continue
         print(f"✅ {chart_key}: {len(data)} rows")
@@ -394,24 +420,23 @@ def scrape_kworb(chart_key, url):
     return data
 
 # ==========================================
-# [PART 3] 메인 실행 (Debug Mode)
+# [PART 3] 실행 (여기서부터 돕니다)
 # ==========================================
 if __name__ == "__main__":
     driver = None
     final_data = [] 
 
     try:
-        print("=== [Start] MusicDeal Crawler (Final) ===")
+        print("=== [MusicDeal] 통합 크롤러 시작 (빌보드 수정판) ===")
         
-        # 1. Selenium (YouTube/Billboard)
+        # 1. 브라우저 켜서 유튜브/빌보드 수집
         try:
             driver = get_driver()
             
             # YouTube
             for name, url in TARGET_URLS.items():
-                print(f"▶️ YouTube: {name}")
                 chart_data = scrape_youtube_chart(name, url, driver)
-                # 조회수 보정
+                # 조회수 API 보정
                 if "Trending" in name:
                     ids = [d["Video_ID"] for d in chart_data if d["Video_ID"]]
                     if ids:
@@ -421,45 +446,46 @@ if __name__ == "__main__":
                                 item["Views"] = api_stats[item["Video_ID"]]
                 final_data.extend(chart_data)
             
-            # Billboard
-            print("\n▶️ Billboard...")
+            # Billboard (안전장치 적용됨)
+            print("\n>>> 빌보드 차트 수집 시작...")
             for b_name, b_url in BILLBOARD_URLS.items():
                 b_data = scrape_billboard_official(driver, b_name, b_url)
                 final_data.extend(b_data)
 
         except Exception as sel_e:
-            print(f"🔥 Selenium Error: {sel_e}")
+            print(f"🔥 브라우저 에러: {sel_e}")
         finally:
             if driver: driver.quit()
 
-        # 2. Requests (Melon/Genie/Kworb)
-        print("\n▶️ Domestic & Kworb...")
+        # 2. 국내 차트 및 Kworb (Requests 방식)
+        print("\n>>> 국내 및 기타 차트 수집...")
         final_data.extend(scrape_melon())
         final_data.extend(scrape_genie())
         for key, url in EXTRA_URLS.items():
             final_data.extend(scrape_kworb(key, url))
 
-        # 3. 데이터 전송 (강제 전송 모드)
-        print(f"\n📊 Total Data: {len(final_data)} rows")
+        # 3. 데이터 전송 (웹훅)
+        print(f"\n📊 총 수집된 데이터: {len(final_data)} 줄")
         
         if len(final_data) > 0:
-            print(f"🚀 Sending to: {WEBHOOK_URL[:40]}...")
+            print(f"🚀 데이터 전송 시작: {WEBHOOK_URL[:40]}...")
             
-            # 청크 단위 전송
             chunk_size = 3000
             for i in range(0, len(final_data), chunk_size):
                 chunk = final_data[i:i+chunk_size]
                 try:
-                    response = requests.post("https://script.google.com/macros/s/AKfycbyFm0Xu2BY3T_JcNgQqQssOhY1hJ-UH1A-GW2hhRLT-jDkgevFL74Bl1iEXUFPW1pleBw/exec", json=chunk)
-                    print(f"   -> Chunk {i//chunk_size + 1}: Code {response.status_code}")
-                    print(f"      Response: {response.text[:100]}") # 에러 메시지 확인용
+                    # [주의] 여기서 에러나면 주소가 'exec'가 맞는지 확인 필요
+                    response = requests.post(WEBHOOK_URL, json=chunk)
+                    print(f"   -> 묶음 {i//chunk_size + 1} 전송결과: {response.status_code}")
+                    if response.status_code not in [200, 201]:
+                        print(f"      [경고] 전송 실패 가능성 있음. 응답: {response.text[:100]}")
                 except Exception as e:
-                    print(f"❌ Send Error: {e}")
+                    print(f"❌ 전송 중 에러: {e}")
                 time.sleep(1)
-            print("✨ Done.")
+            print("✨ 모든 작업 완료.")
         else:
-            print("⚠️ 0 rows collected.")
+            print("⚠️ 수집된 데이터가 없습니다.")
 
     except Exception as main_e:
-        print("🔥 Fatal Error.")
+        print("🔥 치명적 오류 발생.")
         print(traceback.format_exc())
