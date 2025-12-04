@@ -19,7 +19,7 @@ from selenium.webdriver.support import expected_conditions as EC
 # ==========================================
 
 # 1. 데이터 보낼 주소 (대표님 CSV 주소)
-WEBHOOK_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRR9sg-5znnm3vm2rpUkfkKE4GeYJnUmtW76-5BzjFNeaYnHZ_jLQe2oSCvQLYc861AEgLUs_nqXJgx/pub?gid=0&single=true&output=csv"
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyFm0Xu2BY3T_JcNgQqQssOhY1hJ-UH1A-GW2hhRLT-jDkgevFL74Bl1iEXUFPW1pleBw/exec"
 
 # 2. 유튜브 API 키
 YOUTUBE_API_KEY = "AIzaSyDFFZNYygA85qp5p99qUG2Mh8Kl5qoLip4"
