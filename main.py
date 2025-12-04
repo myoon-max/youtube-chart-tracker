@@ -209,26 +209,23 @@ def scrape_youtube_chart(chart_name, url, driver):
             
     return data_list
 
-# 2. [수정됨] 빌보드 3종 통합 크롤러 (Selenium + 스크린샷 기반 클래스 수정)
+# 2. [수정됨] 빌보드: 무조건 오늘 날짜 저장 + Class 선택자 적용 (데이터 수집 보장)
 def scrape_billboard_official(driver, chart_key, url):
     print(f"🇺🇸 Scraping {chart_key} (Official/Selenium)...")
     data = []
+    # [핵심] 사이트 날짜 파싱 안 하고 무조건 '오늘'로 저장
     today = datetime.now().strftime("%Y-%m-%d")
 
     try:
         driver.get(url)
-        # [중요] 스크롤 로직 추가 (빌보드는 스크롤 안하면 데이터 로딩 안됨)
+        # 스크롤 필수
         last_height = driver.execute_script("return document.body.scrollHeight")
-        # 조금씩 내리면서 로딩 유도
         for i in range(1, 5):
             driver.execute_script(f"window.scrollTo(0, {i * 1000});")
             time.sleep(1)
-        
-        # 마지막으로 맨 아래로
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(3) 
 
-        # 차트 행 컨테이너 대기
         try:
             wait = WebDriverWait(driver, 15)
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "o-chart-results-list-row-container")))
@@ -238,15 +235,14 @@ def scrape_billboard_official(driver, chart_key, url):
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
-        # [수정] 스크린샷 1번의 컨테이너 클래스 사용
+        # Class 선택자 (안정적)
         rows = soup.select('div.o-chart-results-list-row-container')
         
         print(f"   -> Found {len(rows)} raw rows.")
 
         for idx, row in enumerate(rows):
             try:
-                # 1. 순위 (Rank)
-                # 스크린샷 1번: 1등 '2'는 span.c-label.a-font-primary-bold-l 안에 있음
+                # Rank
                 rank_elem = row.select_one('span.c-label.a-font-primary-bold-l')
                 if rank_elem:
                     rank_text = rank_elem.get_text(strip=True)
@@ -254,21 +250,15 @@ def scrape_billboard_official(driver, chart_key, url):
                 else:
                     rank = idx + 1
                 
-                # 2. 제목 (Title) 
-                # 스크린샷 4번: h3 태그에 'c-title' 클래스 확인됨 (ID 대신 클래스 사용)
+                # Title (h3.c-title 사용)
                 title_tag = row.select_one('h3.c-title')
                 title = title_tag.get_text(strip=True) if title_tag else "Unknown"
                 
-                # 3. 가수 (Artist)
-                # 스크린샷 4번: h3 바로 아래 span.c-label.a-no-trucate 가 아티스트임
+                # Artist (c-label.a-no-trucate 사용)
                 artist = "Unknown"
                 if title_tag:
-                    # h3 바로 다음에 오는 형제 요소 찾기 (혹은 같은 li 안의 span 찾기)
-                    # 구조상: li > h3 ... span
-                    # title_tag의 부모 li를 찾고 그 안에서 c-label.a-no-trucate 찾기
                     parent_li = title_tag.find_parent('li')
                     if parent_li:
-                        # a-no-trucate 클래스가 아티스트명에 붙어있음 (스크린샷 4)
                         artist_span = parent_li.select_one('span.c-label.a-no-trucate')
                         if artist_span:
                             artist = artist_span.get_text(strip=True)
@@ -335,12 +325,12 @@ def scrape_genie():
     except Exception as e: print(f"❌ Genie Error: {e}")
     return data
 
-# 5. [수정됨] Kworb Spotify 크롤러 (실제 날짜 파싱 적용)
+# 5. [수정됨] Kworb: 사이트 날짜 무시 -> 무조건 '오늘' 날짜로 저장
 def scrape_kworb(chart_key, url):
-    print(f"🟢 Scraping {chart_key} via Kworb (Parsing real date)...")
+    print(f"🟢 Scraping {chart_key} via Kworb (Force Today)...")
     data = []
     
-    # 기본값은 오늘 (파싱 실패 대비)
+    # [핵심] 사이트에서 날짜 파싱하던 로직 제거 -> 무조건 실행일(오늘) 사용
     chart_date = datetime.now().strftime("%Y-%m-%d")
     TARGET_HEADER_KEYWORD = "Streams"
 
@@ -349,18 +339,7 @@ def scrape_kworb(chart_key, url):
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # [핵심 수정] 페이지 상단의 날짜(2025/12/02) 파싱
-        # 스크린샷에 있던 <span class="pagetitle"> 타겟팅
-        title_span = soup.select_one('span.pagetitle')
-        if title_span:
-            title_text = title_span.get_text()
-            # YYYY/MM/DD 형식 추출
-            date_match = re.search(r'(\d{4})/(\d{2})/(\d{2})', title_text)
-            if date_match:
-                chart_date = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
-                print(f"   -> Detected Chart Date: {chart_date}")
-            else:
-                print(f"   -> ⚠️ Date parsing failed, using today: {chart_date}")
+        # (기존 날짜 파싱 로직 삭제됨)
 
         table = soup.find('table')
         if not table: return []
@@ -408,7 +387,7 @@ def scrape_kworb(chart_key, url):
                 final_val = int(val_clean) if val_clean else 0
 
                 data.append({
-                    "Date": chart_date, # [수정] 실제 파싱된 날짜 사용
+                    "Date": chart_date, # 오늘 날짜 강제 적용
                     "Chart": chart_key,
                     "Rank": rank,
                     "Title": title,
