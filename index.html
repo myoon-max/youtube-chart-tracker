@@ -1,950 +1,247 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicDeal Analytics (Unified Edition)</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
-    
-    <style>
-        :root {
-            --bg-color: #F5F7FA;
-            --card-bg: #FFFFFF;
-            --text-main: #1A1A1A;
-            --text-sub: #5F6368;
-            --primary: #E62117; /* Youtube Red */
-            --blue: #1A73E8;
-            --green: #1E8E3E;
-            --melon: #00CD3C;
-            --genie: #2878F5;
-            --spotify: #1DB954;
-            --billboard: #000000;
-            --border: #E0E0E0;
-            --shadow: 0 2px 12px rgba(0,0,0,0.04);
-        }
+<style>
+  /* [스타일] 테이블 디자인 */
+  .ranking-table-container {
+    width: 100%;
+    overflow-x: auto;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  
+  table.custom-rank-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    min-width: 1000px; /* 컬럼이 늘어나서 넓이 확보 */
+  }
 
-        * { box-sizing: border-box; outline: none; }
-        body { 
-            font-family: 'Pretendard', sans-serif; 
-            background-color: var(--bg-color); 
-            color: var(--text-main); 
-            margin: 0; padding: 0; 
-            min-height: 100vh;
-        }
-        
-        .container { max-width: 1800px; margin: 0 auto; padding: 80px 20px 100px; }
+  /* 헤더 스타일 */
+  table.custom-rank-table th {
+    background-color: #f8f9fa;
+    color: #495057;
+    font-weight: 700;
+    padding: 12px 8px;
+    font-size: 13px;
+    border-bottom: 2px solid #dee2e6;
+    text-align: center;
+    white-space: nowrap;
+  }
 
-        /* 헤드라인 & 토글 */
-        header { 
-            display: flex; flex-direction: column; align-items: center; 
-            margin-bottom: 60px; border-bottom: 1px solid #eee; padding-bottom: 40px; position: relative;
-        }
-        h1 { 
-            margin: 0 0 15px 0; font-weight: 900; font-size: 3rem; 
-            letter-spacing: -1px; color: var(--text-main); text-transform: uppercase; 
-        }
-        h1 span { color: var(--primary); }
-        
-        .header-controls { display: flex; gap: 15px; align-items: center; }
-        .date-badge { 
-            display: inline-block; background: #fff; padding: 8px 20px; 
-            border-radius: 30px; border: 1px solid var(--border); 
-            color: var(--text-sub); font-weight: 600; font-size: 0.95rem;
-            box-shadow: var(--shadow);
-        }
+  /* 셀 스타일 */
+  table.custom-rank-table td {
+    padding: 12px 8px;
+    border-bottom: 1px solid #f1f3f5;
+    vertical-align: middle;
+    text-align: center;
+  }
 
-        /* Revenue Toggle Switch */
-        .toggle-wrapper {
-            display: flex; align-items: center; background: #fff; border: 1px solid var(--border);
-            padding: 5px 10px 5px 5px; border-radius: 30px; box-shadow: var(--shadow); cursor: pointer;
-        }
-        .toggle-wrapper label { font-size: 0.9rem; font-weight: 700; color: #333; margin-left: 8px; cursor: pointer; }
-        .switch {
-            position: relative; display: inline-block; width: 44px; height: 24px;
-        }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider {
-            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #ccc; transition: .4s; border-radius: 34px;
-        }
-        .slider:before {
-            position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
-            background-color: white; transition: .4s; border-radius: 50%;
-        }
-        input:checked + .slider { background-color: var(--green); }
-        input:checked + .slider:before { transform: translateX(20px); }
+  /* 곡 정보 (왼쪽 정렬) */
+  .song-info {
+    text-align: left !important;
+    width: 220px;
+    position: sticky;
+    left: 0;
+    background-color: #fff; /* 스크롤 시 겹침 방지 */
+    z-index: 1;
+  }
+  .song-title {
+    font-weight: bold;
+    color: #212529;
+    font-size: 14px;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .song-artist {
+    color: #868e96;
+    font-size: 12px;
+  }
 
-        /* 로그인 */
-        #login-screen { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: #fff; z-index: 9999; display: flex; align-items: center; justify-content: center; 
-        }
-        .login-box { width: 400px; text-align: center; }
-        .login-input { 
-            width: 100%; padding: 15px; margin-top: 20px; border: 1px solid #ddd; 
-            border-radius: 8px; font-size: 1rem; text-align: center; background: #f9f9f9; 
-        }
-        .login-btn { 
-            width: 100%; padding: 15px; margin-top: 10px; background: var(--primary); 
-            color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; 
-        }
+  /* [중요] 순위 숫자 (검은색/굵게) */
+  .rank-cell {
+    color: #000000 !important;
+    font-weight: 800 !important;
+    font-size: 15px;
+  }
 
-        /* 메인 UI */
-        #app-content { display: none; opacity: 0; transition: opacity 0.5s; }
+  /* 1~3위 강조 */
+  .top-rank {
+    color: #e03131 !important;
+  }
 
-        /* KPI 카드 */
-        .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 50px; transition: all 0.3s; }
-        .summary-grid.no-revenue { grid-template-columns: repeat(2, 1fr); }
-
-        .kpi-card { 
-            background: var(--card-bg); border-radius: 16px; padding: 24px; 
-            box-shadow: var(--shadow); border: 1px solid var(--border); position: relative;
-            transition: transform 0.2s;
-        }
-        .kpi-card:hover { transform: translateY(-3px); }
-        .kpi-label { font-size: 0.85rem; color: var(--text-sub); font-weight: 700; text-transform: uppercase; margin-bottom: 8px; display: block; }
-        .kpi-value { font-family: 'Montserrat', sans-serif; font-size: 2rem; font-weight: 800; color: var(--text-main); }
-        .kpi-value.money { color: var(--green); }
-        .kpi-value.kr { color: var(--blue); }
-        .kpi-value.us { color: var(--primary); }
-        .kpi-sub { font-size: 0.8rem; color: #888; margin-top: 5px; }
-
-        /* 탭 네비게이션 */
-        .tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 50px; flex-wrap: wrap; }
-        .tab-btn { 
-            padding: 12px 28px; border: 1px solid #ddd; background: #fff; 
-            color: #666; border-radius: 30px; cursor: pointer; font-weight: 700; font-size: 1rem;
-            transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-        .tab-btn.active { 
-            background: #333; color: #fff; border-color: #333; 
-            transform: scale(1.05); box-shadow: 0 4px 10px rgba(0,0,0,0.15); 
-        }
-        .tab-content { display: none; animation: fadeIn 0.4s; }
-        .tab-content.active { display: block; }
-
-        /* 카드 & 컨트롤 */
-        .card { background: var(--card-bg); border-radius: 16px; box-shadow: var(--shadow); padding: 30px; margin-bottom: 30px; border: 1px solid var(--border); }
-        .controls { 
-            display: flex; flex-wrap: wrap; gap: 15px; align-items: center; 
-            padding-bottom: 20px; border-bottom: 1px solid #eee; margin-bottom: 20px; 
-        }
-        .control-group label { font-weight: bold; font-size: 0.9rem; margin-right: 8px; color: #333; }
-        input, select { 
-            padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; 
-            font-size: 0.95rem; background: #fff; color: #333; 
-        }
-        input:focus, select:focus { border-color: var(--primary); outline: none; }
-
-        /* 테이블 */
-        .table-container { overflow-x: auto; border-radius: 8px; border: 1px solid #eee; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.95rem; white-space: nowrap; }
-        th { 
-            background: #F8F9FA; color: #333; padding: 16px; text-align: center; 
-            font-weight: 800; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 10;
-        }
-        td { padding: 14px; border-bottom: 1px solid #eee; text-align: center; color: #333; }
-        tr:hover { background-color: #f1f3f5; cursor: pointer; }
-
-        /* 데이터 컬러 및 플랫폼 뱃지 */
-        .rank-up { color: #D32F2F; font-weight: bold; background: #FFEBEE; padding: 2px 6px; border-radius: 4px; }
-        .rank-down { color: #1976D2; font-weight: bold; background: #E3F2FD; padding: 2px 6px; border-radius: 4px; }
-        .money-text { color: var(--green); font-weight: 800; font-family: 'Montserrat'; }
-        .highlight-cut { background: #FFF8E1; font-weight: bold; border-left: 3px solid #FFC107; }
-        
-        /* [수정] Sum Row 스타일 변경 */
-        .sum-row { 
-            background: #F1F8E9 !important; /* 연한 초록색 배경 */
-            color: #1B5E20 !important; /* 짙은 녹색 글씨 */
-            font-weight: 800 !important; 
-            border-bottom: 2px solid #4CAF50 !important;
-        }
-        
-        .pf-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; font-weight: bold; display: inline-block; width: 24px; text-align: center; margin-right: 5px; }
-        .pf-yt { background-color: var(--primary); }
-        .pf-sp { background-color: var(--spotify); }
-        .pf-ml { background-color: var(--melon); }
-        .pf-gn { background-color: var(--genie); }
-        .pf-bb { background-color: var(--billboard); }
-        .rank-top { color: var(--primary); font-weight: 900; }
-
-        /* 모달 */
-        .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
-        .modal-content { 
-            background: #fff; margin: 2vh auto; width: 90%; max-width: 1300px; height: 92vh; 
-            border-radius: 20px; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.2); 
-        }
-        .modal-header { padding: 25px 35px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #fff; border-radius: 20px 20px 0 0; }
-        .modal-title h2 { margin: 0; font-size: 1.8rem; color: #000; }
-        .modal-title p { margin: 5px 0 0 0; color: #666; font-size: 1.1rem; }
-        .close-btn { font-size: 36px; color: #aaa; cursor: pointer; } .close-btn:hover { color: #000; }
-        .modal-body { padding: 35px; overflow-y: auto; flex: 1; background: #FAFAFA; }
-        #detailModal th { background-color: #333 !important; color: #fff !important; }
-
-        /* YouTube Button */
-        .yt-btn {
-            background: #FF0000; color: #fff; padding: 8px 20px; border-radius: 30px; 
-            text-decoration: none; font-weight: bold; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;
-            box-shadow: 0 4px 10px rgba(255,0,0,0.2); transition: background 0.2s;
-        }
-        .yt-btn:hover { background: #cc0000; }
-
-        /* Info Tooltip */
-        .info-icon {
-            display: inline-block; width: 18px; height: 18px; line-height: 18px; text-align: center;
-            border-radius: 50%; background: #ddd; color: #fff; font-size: 12px; font-weight: bold;
-            margin-left: 6px; cursor: help; position: relative;
-        }
-        .info-icon:hover::after {
-            content: attr(data-tooltip);
-            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.9); color: #fff; padding: 10px 14px; border-radius: 6px;
-            font-size: 0.8rem; white-space: pre-line; width: 320px; z-index: 100;
-            font-weight: normal; line-height: 1.5; text-align: left;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        }
-
-        /* 유틸 */
-        .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-        .chart-box { background: #fff; border: 1px solid #eee; border-radius: 12px; padding: 20px; height: 400px; display: flex; flex-direction: column; box-shadow: var(--shadow); }
-        .chart-header { font-weight: 800; font-size: 1.1rem; margin-bottom: 15px; color: #333; border-left: 4px solid var(--primary); padding-left: 12px; }
-
-        .search-wrapper { position: relative; margin-left: auto; width: 300px; }
-        .search-wrapper input { width: 100%; padding-left: 40px; border-radius: 20px; border: 1px solid #ddd; }
-        .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #999; }
-
-        .footer-info { text-align: center; color: #888; margin-top: 40px; font-size: 0.85rem; padding-top: 20px; border-top: 1px solid #ddd; }
-        .price-tag { display: inline-block; background: #fff; border: 1px solid #ddd; padding: 6px 12px; border-radius: 20px; margin: 0 5px; font-weight: 600; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.03); }
-
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    </style>
+  /* 데이터 없음 */
+  .no-data {
+    color: #ced4da;
+    font-weight: 400;
+    font-size: 12px;
+  }
+</style>
 </head>
 <body>
 
-<div id="login-screen">
-    <div class="login-box">
-        <h2 class="login-title" style="color:#000; margin-bottom:10px;">MUSICDEAL <span style="color:var(--primary)">ADMIN</span></h2>
-        <input type="password" id="passwordInput" class="login-input" placeholder="Access Key" onkeyup="if(window.event.keyCode==13){checkLogin()}">
-        <button class="login-btn" onclick="checkLogin()">접속하기</button>
-        <p id="login-msg" style="color:var(--primary); margin-top:15px; font-size:0.9rem;"></p>
-    </div>
-</div>
-
-<div id="app-content" class="container">
-    <header>
-        <h1>MUSICDEAL <span>ANALYTICS</span></h1>
-        <div class="header-controls">
-            <div class="date-badge">최종 업데이트: <span id="header-date">-</span></div>
-            <div class="toggle-wrapper">
-                <label class="switch">
-                    <input type="checkbox" id="revenue-toggle" onchange="toggleRevenue()">
-                    <span class="slider"></span>
-                </label>
-                <label for="revenue-toggle">💰 수익 분석</label>
-            </div>
-        </div>
-    </header>
-
-    <div class="summary-grid" id="kpi-container">
-        <div class="kpi-card" id="card-market" style="border-top: 4px solid var(--green);">
-            <span class="kpi-label">💰 Market Size (Top 100 Only) <span class="info-icon" data-tooltip="📉 왜 전체 시장보다 수치가 작나요?
-            
-            본 데이터는 'Top 100 차트 진입곡'만을 집계합니다.
-            실제 유튜브 전체 트래픽의 90% 이상은 차트 밖의 'Long-tail(롱테일)' 영역에서 발생하므로, 실제 시장 규모는 이 수치의 최소 10배 이상입니다.
-
-            [📊 퀀트 집계 로직]
-            1. Daily MV: 조회수 × 단가 (100% 반영)
-            2. Weekly Chart: (주간조회수 ÷ 7) × 단가 (일간 안분)
-            3. Trending: 일간 증감분(Delta) × 단가
-            4. 중복 제거: KR/US 동시 진입 시 높은 단가(미국) 1회 적용">i</span></span>
-            <div class="kpi-value money" id="total-revenue">-</div>
-            <div class="kpi-sub">차트 내 곡들의 일간 추정 매출 합계 (유튜브 Only)</div>
-        </div>
-        <div class="kpi-card" id="card-kr">
-            <span class="kpi-label">🇰🇷 KR Revenue Share</span>
-            <div class="kpi-value kr" id="kr-revenue">-</div>
-            <div class="kpi-sub">한국 차트 발생 매출</div>
-        </div>
-        <div class="kpi-card" id="card-us">
-            <span class="kpi-label">🇺🇸 US Revenue Share</span>
-            <div class="kpi-value us" id="us-revenue">-</div>
-            <div class="kpi-sub">미국 차트 발생 매출</div>
-        </div>
-        <div class="kpi-card">
-            <span class="kpi-label">🇰🇷 KR MV Entry Cut</span>
-            <div class="kpi-value kr" id="kr-mv-cut">-</div>
-            <div class="kpi-sub">오늘자 100위 조회수</div>
-        </div>
-        <div class="kpi-card">
-            <span class="kpi-label">🇺🇸 US MV Entry Cut</span>
-            <div class="kpi-value us" id="us-mv-cut">-</div>
-            <div class="kpi-sub">오늘자 100위 조회수</div>
-        </div>
-        <div class="kpi-card" id="card-dup">
-            <span class="kpi-label">⚠️ Global Duplicate Blocked</span>
-            <div class="kpi-value" id="dup-blocked" style="color:var(--primary)">-</div>
-            <div class="kpi-sub">KR/US 중복 트렌딩 영상 수</div>
-        </div>
-    </div>
-
-    <div class="tabs">
-        <button class="tab-btn active" onclick="openTab('daily', this)">📅 데일리 & 수익</button>
-        <button class="tab-btn" onclick="openTab('unified', this)">🌐 통합 랭킹 (Matrix)</button>
-        <button class="tab-btn" onclick="openTab('trend', this)">📈 월간/연간 추이</button>
-        <button class="tab-btn" onclick="openTab('cross', this)">🔗 크로스 차트</button>
-        <button class="tab-btn" onclick="openTab('shorts-strategy', this)">⚡ 쇼츠 바이럴</button>
-        <button class="tab-btn" onclick="openTab('long-run', this)">🧟 롱런(좀비) 지수</button>
-    </div>
-
-    <div id="daily" class="tab-content active">
-        <div class="card">
-            <div class="controls">
-                <div class="control-group"><label>날짜</label><input type="date" id="dailyDate" onchange="renderDaily()"></div>
-                <div class="control-group"><label>국가</label><select id="countryFilter" onchange="updateChartFilter()"><option value="ALL">전체 (Global)</option><option value="KR">🇰🇷 한국</option><option value="US">🇺🇸 미국</option></select></div>
-                <div class="control-group"><label>차트</label><select id="chartFilter" onchange="renderDaily()"><option value="ALL">전체 차트</option></select></div>
-                <div class="search-wrapper">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="dailySearch" placeholder="곡명 / 아티스트 검색..." onkeyup="renderDaily()">
-                </div>
-            </div>
-            <div class="table-container">
-                <table id="dailyTable">
-                    <thead><tr><th>차트</th><th>순위</th><th>제목</th><th>아티스트</th><th>조회수/수치 (Daily)</th><th>전일 대비 (Delta)</th><th id="th-daily-rev">예상 수익 (YouTube Only)</th></tr></thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <div id="unified" class="tab-content">
-        <div class="card">
-            <div class="controls">
-                <h3>🌐 플랫폼 통합 순위 현황</h3>
-                <div style="font-size:0.85rem; color:#666; margin-left:15px; margin-right:auto;">
-                    * 제목/아티스트가 유사한 곡들을 자동으로 통합하여 보여줍니다. (공백, 괄호 등 무시)
-                </div>
-                <div class="search-wrapper">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="unifiedSearch" placeholder="곡명 / 아티스트 통합 검색..." onkeyup="renderUnified()">
-                </div>
-            </div>
-            <div class="table-container">
-                <table id="unifiedTable">
-                    <thead>
-                        <tr>
-                            <th style="min-width:300px;">Song Info</th>
-                            <th><span class="pf-badge pf-ml">M</span>Melon</th>
-                            <th><span class="pf-badge pf-gn">G</span>Genie</th>
-                            <th><span class="pf-badge pf-sp">S</span>Spotify (Global)</th>
-                            <th><span class="pf-badge pf-sp">S</span>Spotify (KR)</th>
-                            <th><span class="pf-badge pf-bb">B</span>Billboard Hot100</th>
-                            <th><span class="pf-badge pf-yt">Y</span>YouTube (KR)</th>
-                            <th><span class="pf-badge pf-yt">Y</span>YouTube (US)</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <div id="trend" class="tab-content">
-        <div class="card">
-            <h3>📈 구간별 진입 필요 수치 (누적 평균)</h3>
-            <div class="table-container"><table id="trendTable"><thead><tr><th>기간</th><th>차트</th><th>1~10위</th><th>11~20위</th><th>21~30위</th><th>31~40위</th><th>41~50위</th><th>진입 컷 (100위)</th></tr></thead><tbody></tbody></table></div>
-        </div>
-    </div>
-
-    <div id="cross" class="tab-content">
-        <div class="card">
-            <div class="controls"><h3>🔗 멀티 차트 진입 아티스트</h3><div class="search-wrapper"><span class="search-icon">🔍</span><input type="text" id="crossSearch" placeholder="검색..." onkeyup="renderCross()"></div></div>
-            <div class="table-container"><table id="crossTable"><thead><tr><th>아티스트 - 노래</th><th>진입 차트 수</th><th>포함된 차트 목록</th><th>최고 순위</th></tr></thead><tbody></tbody></table></div>
-        </div>
-    </div>
-
-    <div id="shorts-strategy" class="tab-content">
-        <div class="card">
-            <div class="controls">
-                <div class="control-group"><label>기준일</label><input type="date" id="shortsDate" onchange="renderShortsStrategy()"></div>
-                <div class="control-group"><label>차트</label><select id="shortsChartSelect" onchange="renderShortsStrategy()"><option value="KR_Daily_Top_Shorts">🇰🇷 한국 쇼츠</option><option value="US_Daily_Top_Shorts">🇺🇸 미국 쇼츠</option></select></div>
-                <div style="margin-left:auto;"><button class="tab-btn" style="padding:6px 15px; font-size:0.8rem;" onclick="setShortsPeriod(1, this)">일간</button><button class="tab-btn" style="padding:6px 15px; font-size:0.8rem;" onclick="setShortsPeriod(7, this)">주간</button></div>
-            </div>
-            <div id="shortsKPI" style="padding:20px; background:#FFF8E1; border-left:5px solid #FFC107; border-radius:8px; margin-bottom:30px; color:#333;"></div>
-            <div class="insight-grid" style="margin-bottom:30px;">
-                <div class="chart-box"><div class="chart-header">🔥 Viral Map (산점도)</div><canvas id="scatterChart"></canvas></div>
-                <div class="chart-box" style="height:400px;"><div class="chart-header">🚀 급상승 루키 (화력 Top)</div><div style="overflow-y:auto; flex:1;"><table id="rookieTable"><thead><tr><th>순위</th><th>곡명</th><th>속도</th></tr></thead><tbody></tbody></table></div></div>
-            </div>
-            <div class="table-container"><table id="shortsTable"><thead></thead><tbody></tbody></table></div>
-        </div>
-    </div>
-
-    <div id="long-run" class="tab-content">
-        <div class="card">
-            <div class="info-box" style="background:#E3F2FD; border-left:4px solid #2196F3; padding:15px; margin-bottom:20px; color:#0D47A1;"><strong>🧟 롱런 지수 (Long-Run Power)</strong><br>차트에서 얼마나 오랫동안 생존하며 성과를 내는가 (계산식: 체류일 × 1000 ÷ 평균 순위)</div>
-            <div class="table-container"><table id="zombieTable"><thead><tr><th>곡명</th><th>체류일</th><th>평균순위</th><th>롱런점수</th><th>상태</th></tr></thead><tbody></tbody></table></div>
-        </div>
-    </div>
-
-    <div class="footer-info">
-        <h4>💰 수익 산출 기준 (Top 100 Est.)</h4>
-        <div style="margin:10px 0;">
-            <span class="price-tag">🇰🇷 Art Track: <span>₩5</span></span>
-            <span class="price-tag">🇰🇷 MV Long: <span>₩2.5</span></span>
-            <span class="price-tag">🇺🇸 Art Track: <span>₩10</span></span>
-            <span class="price-tag">🇺🇸 MV Long: <span>₩4</span></span>
-        </div>
-        <p>* 모든 테이블과 지표는 <b>'실질 일간 창출 가치(Daily Generated Value)'</b> 기준으로 표시됩니다.</p>
-        <p>- Spotify, Melon, Billboard 등 타 플랫폼은 수익 계산에서 제외됩니다 (0원 처리)</p>
-        <p>- Trending: 일간 증감분(Delta) 반영 | Weekly: 일할 계산(1/7) 반영</p>
-    </div>
-</div>
-
-<div id="detailModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <div class="modal-title"><h2 id="modalTitle">Title</h2><p id="modalArtist">Artist</p></div>
-            <div style="display:flex; align-items:center; gap:20px;">
-                <a id="ytLink" href="#" target="_blank" class="yt-btn">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="white" style="margin-right:5px;"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                    Watch Now
-                </a>
-                <span class="close-btn" onclick="closeModal()">&times;</span>
-            </div>
-        </div>
-        <div class="modal-body">
-            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:20px; margin-bottom:30px;">
-                <div class="kpi-card" id="modal-card-rev" style="border-left:5px solid var(--green);">
-                    <span class="kpi-label">💰 추정 누적 수익 <span class="info-icon" data-tooltip="📊 일간 단위 중복 제거 적용:
-                    같은 날짜에 여러 차트(KR/US Trending 등)에 동시 진입한 경우, 가장 높은 단가의 수익 1건만 반영하여 합산했습니다.">i</span></span>
-                    <div class="kpi-value money" id="mRevenue">-</div>
-                </div>
-                <div class="kpi-card"><span class="kpi-label">🏆 최고 순위</span><div class="kpi-value" id="mBestRank">-</div></div>
-                <div class="kpi-card"><span class="kpi-label">🔥 최고 수치 (Views/Streams)</span><div class="kpi-value" id="mPeakView">-</div></div>
-            </div>
-            <div class="insight-grid">
-                <div class="chart-box"><div class="chart-header" id="viewChartTitle">📊 일간 추이</div><canvas id="viewChart"></canvas></div>
-                <div class="chart-box"><div class="chart-header">🏆 순위 변동</div><canvas id="rankChart"></canvas></div>
-            </div>
-            <div class="card" style="margin-top:60px; padding:0; border:none; box-shadow:none;">
-                <h3 style="margin-bottom:15px; color:#000;">📋 상세 이력</h3>
-                <div class="table-container">
-                    <table id="historyTable"><thead><tr><th>날짜</th><th>차트</th><th>순위</th><th>수치</th><th>증감</th><th id="th-hist-rev">수익 (Daily)</th></tr></thead><tbody></tbody></table>
-                </div>
-            </div>
-        </div>
-    </div>
+<div class="ranking-table-container">
+  <table class="custom-rank-table">
+    <thead>
+      <tr>
+        <th class="song-info" style="padding-left:15px; z-index:2;">Song Info</th>
+        <th style="background-color:#00d344; color:white;">Melon</th>
+        <th style="background-color:#0094fb; color:white;">Genie</th>
+        
+        <th style="background-color:#000000; color:white;">Hot 100</th>
+        <th style="background-color:#333333; color:white;">BB 200</th>
+        <th style="background-color:#555555; color:white;">Global 200</th>
+        
+        <th style="background-color:#1db954; color:white;">Spot. (GL)</th>
+        <th style="background-color:#1ed760; color:white;">Spot. (KR)</th>
+        
+        <th style="background-color:#ff0000; color:white;">YT (KR)</th>
+        <th style="background-color:#cc0000; color:white;">YT (US)</th>
+      </tr>
+    </thead>
+    <tbody id="ranking-tbody">
+      <tr><td colspan="10" style="padding:20px;">데이터 로딩 중...</td></tr>
+    </tbody>
+  </table>
 </div>
 
 <script>
-    const ACCESS_KEY = "musicdeal2025"; 
-    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRR9sg-5znnm3vm2rpUkfkKE4GeYJnUmtW76-5BzjFNeaYnHZ_jLQe2oSCvQLYc861AEgLUs_nqXJgx/pub?gid=0&single=true&output=csv";
-    const RATES = { KR: { song: 5.0, mv: 2.5 }, US: { song: 10.0, mv: 4.0 } };
+// [설정 1] CSV 주소 (그대로 유지)
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRR9sg-5znnm3vm2rpUkfkKE4GeYJnUmtW76-5BzjFNeaYnHZ_jLQe2oSCvQLYc861AEgLUs_nqXJgx/pub?gid=0&single=true&output=csv";
+
+// [설정 2] 매핑 테이블 (빌보드 3개 모두 연결)
+const MAPPER = {
+  // 파이썬 키 : 화면 컬럼 ID
+  "Melon_Daily_Top100":    "Melon",
+  "Genie_Daily_Top200":    "Genie",
+  
+  // 빌보드 3개
+  "Billboard_Hot100":      "Bb_Hot100",
+  "Billboard_200":         "Bb_200",
+  "Billboard_Global200":   "Bb_Global",
+  
+  "Spotify_Global_Daily":  "Spot_GL",
+  "Spotify_KR_Daily":      "Spot_KR",
+  
+  // 유튜브
+  "KR_Daily_Top_MV":       "YT_KR",
+  "KR_Weekly_Top_MV":      "YT_KR",
+  "KR_Weekly_Top_Songs":   "YT_KR",
+  "US_Daily_Top_MV":       "YT_US",
+  "US_Weekly_Top_MV":      "YT_US",
+  "US_Weekly_Top_Songs":   "YT_US"
+};
+
+// [로직] 데이터 로드 및 파싱
+async function loadData() {
+  try {
+    const response = await fetch(SHEET_CSV_URL);
+    const text = await response.text();
+    const rows = csvToJSON(text);
+    renderTable(rows);
+  } catch (err) {
+    console.error(err);
+    document.getElementById('ranking-tbody').innerHTML = `<tr><td colspan="10">로딩 실패 (새로고침 필요)</td></tr>`;
+  }
+}
+
+function csvToJSON(csv) {
+  const lines = csv.trim().split("\n");
+  const headers = lines[0].split(",").map(h => h.trim());
+  const result = [];
+  for(let i=1; i<lines.length; i++){
+    const currentline = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+    if (!currentline) continue;
+    let obj = {};
+    headers.forEach((h, index) => {
+        let val = currentline[index] || "";
+        val = val.replace(/^"|"$/g, '');
+        obj[h] = val;
+    });
+    result.push(obj);
+  }
+  return result;
+}
+
+// [로직] 렌더링
+function renderTable(data) {
+  const tbody = document.getElementById('ranking-tbody');
+  tbody.innerHTML = "";
+  
+  const songMap = {};
+
+  data.forEach(row => {
+    // 합계/Total 제거
+    if ((row.Title && row.Title.includes("합계")) || 
+        (row.Title && row.Title.toLowerCase().includes("total"))) return;
+
+    // 키 생성
+    const key = (row.Title + row.Artist).replace(/\s/g, ""); 
     
-    // [NEW] 데이터 매칭을 위한 매핑 테이블 (필요 시 여기에 추가)
-    // 예: "JUMP": "뛰어" -> JUMP라는 제목이 오면 "뛰어"로 인식해서 합침
-    const TITLE_ALIASES = {
-        "JUMP": "뛰어",
-        "RUN": "뛰어"
-    };
-
-    let rawData = [], uniqueCharts = [];
-    let scatterChartInst=null, vChart=null, rChart=null;
-    let shortsPeriod = 1;
-    let showRevenue = false; 
-
-    // [NEW] 문자열 정규화 (괄호 제거, 공백 제거, 소문자화)
-    function normalizeText(text) {
-        if (!text) return "";
-        let t = text.toUpperCase(); // 대문자로 통일
-        
-        // 1. 별칭(Alias) 먼저 적용
-        for (const [key, val] of Object.entries(TITLE_ALIASES)) {
-            if (t === key) t = val; // JUMP -> 뛰어
-        }
-
-        // 2. 괄호 및 특수문자 제거 로직
-        // "뛰어 (Live)" -> "뛰어"
-        // "뛰어(JUMP)" -> "뛰어"
-        t = t.replace(/\(.*\)/g, ""); // 소괄호 내용 제거
-        t = t.replace(/\[.*\]/g, ""); // 대괄호 내용 제거
-        t = t.replace(/[^0-9a-zA-Z가-힣]/g, ""); // 특수문자/공백 제거 (한글,영문,숫자만 남김)
-        
-        return t.trim();
+    if (!songMap[key]) {
+      songMap[key] = {
+        title: row.Title,
+        artist: row.Artist,
+        ranks: {} 
+      };
     }
 
-    function checkLogin() {
-        if(document.getElementById('passwordInput').value === ACCESS_KEY) {
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('app-content').style.display = 'block';
-            setTimeout(()=>document.getElementById('app-content').style.opacity='1', 100);
-            updateVisibility(); 
-            loadData();
-            localStorage.setItem('md_auth', 'true');
-        } else {
-            document.getElementById('login-msg').innerText = "비밀번호 오류";
-        }
+    const targetCol = MAPPER[row.Chart];
+    if (targetCol) {
+      let rawRank = row.Rank || "";
+      // TOP 글자 제거, 숫자만 남김
+      let cleanRank = rawRank.toString().replace(/TOP\s?/gi, "").trim();
+      songMap[key].ranks[targetCol] = cleanRank;
     }
-    if(localStorage.getItem('md_auth') === 'true') {
-        document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('app-content').style.display = 'block';
-        document.getElementById('app-content').style.opacity = '1';
-        updateVisibility(); 
-        loadData();
-    }
+  });
 
-    function toggleRevenue() {
-        showRevenue = document.getElementById('revenue-toggle').checked;
-        updateVisibility();
-    }
+  const songs = Object.values(songMap);
+  if (songs.length === 0) {
+    tbody.innerHTML = "<tr><td colspan='10'>표시할 데이터가 없습니다.</td></tr>";
+    return;
+  }
 
-    function updateVisibility() {
-        const kpiContainer = document.getElementById('kpi-container');
-        const idsToHide = ['card-market', 'card-kr', 'card-us', 'card-dup'];
-        
-        if (showRevenue) {
-            kpiContainer.classList.remove('no-revenue');
-            idsToHide.forEach(id => document.getElementById(id).style.display = 'block');
-        } else {
-            kpiContainer.classList.add('no-revenue');
-            idsToHide.forEach(id => document.getElementById(id).style.display = 'none');
-        }
+  songs.forEach(song => {
+    const tr = document.createElement('tr');
+    
+    // 컬럼 순서 (헤더와 일치해야 함)
+    const colOrder = [
+      "Melon", "Genie", 
+      "Bb_Hot100", "Bb_200", "Bb_Global", 
+      "Spot_GL", "Spot_KR", 
+      "YT_KR", "YT_US"
+    ];
+    
+    // 1. 곡 정보
+    let html = `
+      <td class="song-info">
+        <span class="song-title">${song.title}</span>
+        <span class="song-artist">${song.artist}</span>
+      </td>
+    `;
 
-        const thDaily = document.getElementById('th-daily-rev');
-        if(thDaily) thDaily.style.display = showRevenue ? '' : 'none';
+    // 2. 순위 컬럼
+    colOrder.forEach(col => {
+      let val = song.ranks[col];
+      let displayClass = "rank-cell";
+      
+      if (val && val !== "-" && !isNaN(val) && parseInt(val) <= 3) {
+        displayClass += " top-rank";
+      }
+      if (!val || val === "-" || val === "0") {
+        val = "-";
+        displayClass = "no-data";
+      }
 
-        renderDaily();
-    }
+      html += `<td class="${displayClass}">${val}</td>`;
+    });
 
-    function loadData() {
-        fetch(SHEET_CSV_URL).then(r=>r.text()).then(t=>{
-            rawData = parseCSV(t);
-            calculateStats();
-            if(rawData.length > 0) {
-                const lastDate = rawData[rawData.length-1].Date;
-                document.getElementById("header-date").innerText = lastDate;
-                document.getElementById("dailyDate").value = lastDate;
-                document.getElementById("shortsDate").value = lastDate;
-                uniqueCharts = [...new Set(rawData.map(d => d.Chart))].sort();
-                updateChartFilter();
-                updateSummary(lastDate);
-                renderDaily(); 
-                renderUnified();
-                renderTrend(); renderCross(); renderShortsStrategy(); renderLongRun();
-            }
-        });
-    }
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+  });
+}
 
-    function parseCSV(text) {
-        const lines = text.trim().split("\n");
-        const data = [];
-        for(let i=1; i<lines.length; i++) {
-            const row = lines[i].match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
-            if(!row || row.length < 7) continue;
-            const getCol = (idx) => row[idx] ? row[idx].replace(/^"|"$/g, "").trim() : "";
-            
-            let vStr = getCol(6).replace(/,/g, ""); 
-            let vid = getCol(5); 
-            let title = getCol(3);
-            let artist = getCol(4);
-            if(!vid || vid.length < 5) vid = null; 
-
-            data.push({
-                Date: getCol(0), Chart: getCol(1), Rank: parseInt(getCol(2)), Title: title, Artist: artist, Video_ID: vid, Views: parseInt(vStr) || 0, Delta: 0, Revenue: 0
-            });
-        }
-        return data.sort((a,b) => new Date(a.Date) - new Date(b.Date));
-    }
-
-    function calculateStats() {
-        const map = {};
-        rawData.forEach(d => {
-            const idKey = d.Video_ID ? d.Video_ID : `${d.Title}|${d.Artist}`;
-            const key = `${d.Chart}|${idKey}`;
-            if(!map[key]) map[key] = []; map[key].push(d);
-        });
-
-        Object.values(map).forEach(list => {
-            list.sort((a,b) => new Date(a.Date) - new Date(b.Date));
-            for(let i=0; i<list.length; i++) {
-                const curr = list[i];
-                const prev = i > 0 ? list[i-1] : null;
-                if(prev) curr.Delta = curr.Views - prev.Views;
-                else curr.Delta = 0; 
-
-                const isYoutube = curr.Chart.includes("KR_") || curr.Chart.includes("US_");
-                const isShorts = curr.Chart.includes("Shorts");
-                
-                if(!isYoutube || isShorts) {
-                    curr.Revenue = 0;
-                } else {
-                    let rate = 0;
-                    if(curr.Chart.includes("US")) {
-                        rate = curr.Chart.includes("Songs") ? RATES.US.song : RATES.US.mv;
-                    } else if(curr.Chart.includes("KR")) {
-                        rate = curr.Chart.includes("Songs") ? RATES.KR.song : RATES.KR.mv;
-                    }
-
-                    if(curr.Chart.includes("Weekly")) {
-                        curr.Revenue = Math.round((curr.Views / 7) * rate); 
-                    } else if(curr.Chart.includes("Trending")) {
-                        curr.Revenue = Math.round(Math.max(0, curr.Delta) * rate); 
-                    } else {
-                        curr.Revenue = Math.round(curr.Views * rate);
-                    }
-                }
-            }
-        });
-    }
-
-    function updateSummary(date) {
-        const todayData = rawData.filter(d => d.Date === date);
-        const trendingMap = {};
-        let krSum = 0, usSum = 0;
-        let totalMarketSize = 0;
-        let duplicateCount = 0;
-
-        todayData.forEach(d => {
-            if(d.Revenue === 0) return; 
-
-            let rev = d.Revenue; 
-            if(d.Chart.includes("US")) usSum += rev; else krSum += rev;
-
-            if(d.Chart.includes("Trending")) {
-                const idKey = d.Video_ID ? d.Video_ID : `${d.Title}|${d.Artist}`;
-                if(!trendingMap[idKey]) {
-                    trendingMap[idKey] = rev;
-                } else {
-                    duplicateCount++;
-                    if(rev > trendingMap[idKey]) {
-                        trendingMap[idKey] = rev;
-                    }
-                }
-            } else {
-                totalMarketSize += rev;
-            }
-        });
-
-        totalMarketSize += Object.values(trendingMap).reduce((a,b)=>a+b, 0);
-
-        document.getElementById("total-revenue").innerText = "₩" + totalMarketSize.toLocaleString();
-        document.getElementById("kr-revenue").innerText = "₩" + krSum.toLocaleString();
-        document.getElementById("us-revenue").innerText = "₩" + usSum.toLocaleString();
-        document.getElementById("dup-blocked").innerText = duplicateCount + "개";
-
-        const getCut = (chart) => {
-            const cutRank = chart.includes("Trending") ? 20 : (chart.includes("Shorts") ? 50 : 100);
-            const item = rawData.find(d => d.Date === date && d.Chart === chart && d.Rank === cutRank);
-            return item ? item.Views.toLocaleString() : "-";
-        };
-        document.getElementById("kr-mv-cut").innerText = getCut("KR_Daily_Top_MV");
-        document.getElementById("us-mv-cut").innerText = getCut("US_Daily_Top_MV");
-    }
-
-    function openTab(id, btn) {
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
-        btn.classList.add('active');
-        if(id === 'unified') renderUnified();
-        window.dispatchEvent(new Event('resize'));
-    }
-
-    function updateChartFilter() {
-        const country = document.getElementById("countryFilter").value;
-        const chartSelect = document.getElementById("chartFilter");
-        chartSelect.innerHTML = '<option value="ALL">전체 차트</option>';
-        uniqueCharts.forEach(chart => {
-            if(country === "ALL" || chart.startsWith(country)) {
-                const opt = document.createElement("option"); opt.value = chart; opt.innerText = chart; chartSelect.appendChild(opt);
-            }
-        });
-        renderDaily();
-    }
-
-    function renderDaily() {
-        const date = document.getElementById("dailyDate").value;
-        const country = document.getElementById("countryFilter").value;
-        const chartFilter = document.getElementById("chartFilter").value;
-        const search = document.getElementById("dailySearch").value.toLowerCase();
-        const tbody = document.querySelector("#dailyTable tbody");
-        
-        let data = rawData.filter(d => d.Date === date);
-        if(country !== "ALL") data = data.filter(d => d.Chart.startsWith(country));
-        if(chartFilter !== "ALL") data = data.filter(d => d.Chart === chartFilter);
-        if(search) data = data.filter(d => d.Title.toLowerCase().includes(search) || d.Artist.toLowerCase().includes(search));
-
-        data.sort((a,b) => {
-            if(a.Chart < b.Chart) return -1;
-            if(a.Chart > b.Chart) return 1;
-            return a.Rank - b.Rank;
-        });
-
-        // [수정] Sum Row 복구 및 스타일/문구 변경
-        const totalRev = data.reduce((acc, d) => acc + d.Revenue, 0);
-        const colSpan = showRevenue ? 6 : 5;
-        const totalCell = showRevenue ? `<td class="money-text" style="font-size:1.1rem;">₩${totalRev.toLocaleString()}</td>` : '';
-
-        let html = `
-            <tr class="sum-row">
-                <td colspan="${colSpan}" style="text-align:right; padding-right:20px;"> 합계 </td>
-                ${totalCell}
-            </tr>
-        `;
-
-        html += data.map(d => {
-            const idKey = d.Video_ID ? d.Video_ID : `${d.Artist}|${d.Title}`; 
-            let delta = d.Delta > 0 ? `<span class="rank-up">▲${d.Delta.toLocaleString()}</span>` : (d.Delta < 0 ? `<span class="rank-down">▼${Math.abs(d.Delta).toLocaleString()}</span>` : "-");
-            
-            let revCell = "";
-            if (showRevenue) {
-                revCell = `<td class="money-text">₩${d.Revenue.toLocaleString()}</td>`;
-            }
-
-            return `<tr onclick="openDetail('${idKey}')">
-                <td>${d.Chart}</td><td>${d.Rank}</td><td class="song-title">${d.Title}</td><td>${d.Artist}</td><td style="font-weight:bold">${d.Views.toLocaleString()}</td><td>${delta}</td>${revCell}</tr>`;
-        }).join("");
-        
-        tbody.innerHTML = html || `<tr><td colspan="7" style="text-align:center; padding:30px; color:#666;">데이터 없음</td></tr>`;
-    }
-
-    // [수정] Unified Chart Function에 정규화(Normalization) 적용
-    function renderUnified() {
-        const date = rawData[rawData.length-1].Date;
-        const search = document.getElementById("unifiedSearch").value.toLowerCase();
-        const tbody = document.querySelector("#unifiedTable tbody");
-        
-        const data = rawData.filter(d => d.Date === date);
-        const map = {};
-
-        data.forEach(d => {
-            // [핵심] 제목과 아티스트를 정규화하여 Key 생성 -> 통합 매칭
-            // 예: "뛰어(JUMP)" -> "뛰어", "Black Pink" -> "BLACKPINK"
-            const normTitle = normalizeText(d.Title);
-            const normArtist = normalizeText(d.Artist);
-            const k = `${normTitle}|${normArtist}`;
-
-            if(!map[k]) {
-                // 화면 표시용으로는 원본 중 가장 깔끔한(짧은) 것을 사용하거나 첫 번째 것 사용
-                map[k] = { t: d.Title, a: d.Artist, charts: {} };
-            }
-            // 랭킹 정보 병합
-            // (같은 플랫폼이 여러개면 더 높은 순위 기록)
-            if (!map[k].charts[d.Chart] || d.Rank < map[k].charts[d.Chart]) {
-                map[k].charts[d.Chart] = d.Rank;
-            }
-        });
-
-        const rows = Object.values(map);
-        const filtered = rows.filter(r => r.t.toLowerCase().includes(search) || r.a.toLowerCase().includes(search));
-        
-        filtered.sort((a,b) => {
-            const cntA = Object.keys(a.charts).length;
-            const cntB = Object.keys(b.charts).length;
-            if(cntB !== cntA) return cntB - cntA;
-            return (a.charts['Melon_Daily_Top100'] || 999) - (b.charts['Melon_Daily_Top100'] || 999);
-        });
-
-        const getRankCell = (rank) => {
-            if(!rank) return `<span style="color:#eee">-</span>`;
-            if(rank <= 3) return `<span class="rank-top">TOP ${rank}</span>`;
-            if(rank <= 10) return `<span style="color:#333; font-weight:bold">${rank}</span>`;
-            return `<span style="color:#888">${rank}</span>`;
-        };
-
-        const html = filtered.map(item => {
-            // 상세보기를 위한 ID는 정규화되지 않은 것 중 대표값을 써야 함. (여기는 단순화)
-            const idKey = `${item.a}|${item.t}`; 
-            return `<tr onclick="openDetail('${idKey}')">
-                <td style="text-align:left; padding-left:20px;">
-                    <div style="font-weight:bold; font-size:1rem;">${item.t}</div>
-                    <div style="font-size:0.85rem; color:#666;">${item.a}</div>
-                </td>
-                <td>${getRankCell(item.charts['Melon_Daily_Top100'])}</td>
-                <td>${getRankCell(item.charts['Genie_Daily_Top200'])}</td>
-                <td>${getRankCell(item.charts['Spotify_Global_Daily'])}</td>
-                <td>${getRankCell(item.charts['Spotify_KR_Daily'])}</td>
-                <td>${getRankCell(item.charts['Billboard_Hot100'])}</td>
-                <td>${getRankCell(item.charts['KR_Daily_Top_MV'] || item.charts['KR_Weekly_Top_Songs'])}</td>
-                <td>${getRankCell(item.charts['US_Daily_Top_MV'] || item.charts['US_Weekly_Top_Songs'])}</td>
-            </tr>`;
-        }).join("");
-
-        tbody.innerHTML = html || `<tr><td colspan="8" style="text-align:center; padding:30px;">데이터 없음</td></tr>`;
-    }
-
-    function renderTrend() {
-        const tbody = document.querySelector("#trendTable tbody");
-        const stats = {};
-        rawData.forEach(d => {
-            const key = d.Date.substring(0, 7) + "|" + d.Chart;
-            if(!stats[key]) stats[key] = { s:[0,0,0,0,0,0], c:[0,0,0,0,0,0], sumCut:0, cntCut:0 };
-            const s = stats[key];
-            let idx = -1;
-            if(d.Rank<=10) idx=0; else if(d.Rank<=30) idx=1; else if(d.Rank<=50) idx=2; else if(d.Rank<=70) idx=3; else if(d.Rank<=100) idx=4;
-            if(idx>=0) { s.s[idx]+=d.Views; s.c[idx]++; }
-            const cutRank = d.Chart.includes("Trending")?20:(d.Chart.includes("Shorts")?50:100);
-            if(d.Rank===cutRank) { s.sumCut+=d.Views; s.cntCut++; }
-        });
-        tbody.innerHTML = Object.keys(stats).sort().reverse().map(k => {
-            const [m, c] = k.split("|"); const s = stats[k];
-            let cols = ""; for(let i=0; i<5; i++) cols += `<td>${s.c[i]?Math.round(s.s[i]/s.c[i]).toLocaleString():"-"}</td>`;
-            return `<tr><td>${m}</td><td style="text-align:left">${c}</td>${cols}<td class="highlight-cut">${s.cntCut?Math.round(s.sumCut/s.cntCut).toLocaleString():"-"}</td></tr>`;
-        }).join("");
-    }
-
-    function renderCross() {
-        const tbody = document.querySelector("#crossTable tbody");
-        const search = document.getElementById("crossSearch").value.toLowerCase();
-        const lastDate = rawData[rawData.length-1].Date;
-        const data = rawData.filter(d => d.Date === lastDate);
-        const map = {};
-        data.forEach(d => { 
-            // [수정] 크로스 차트에도 정규화 적용
-            const normTitle = normalizeText(d.Title);
-            const normArtist = normalizeText(d.Artist);
-            const k = `${normTitle}|${normArtist}`;
-
-            // 대표 ID는 원본 사용
-            const originKey = d.Video_ID ? d.Video_ID : `${d.Artist}|${d.Title}`;
-            
-            if(!map[k]) map[k] = { artist: d.Artist, title: d.Title, charts: [], minRank: 999, id: originKey }; 
-            map[k].charts.push(d.Chart); 
-            if(d.Rank < map[k].minRank) map[k].minRank = d.Rank; 
-        });
-        const crosses = Object.values(map).filter(v => v.charts.length > 1).sort((a,b) => b.charts.length - a.charts.length);
-        let html = crosses.filter(v => v.title.toLowerCase().includes(search) || v.artist.toLowerCase().includes(search)).map(v => 
-            `<tr onclick="openDetail('${v.id}')"><td class="song-title">${v.title} (${v.artist})</td><td style="font-weight:bold; color:var(--primary)">${v.charts.length}개</td><td>${v.charts.join(", ")}</td><td>${v.minRank}위</td></tr>`
-        ).join("");
-        tbody.innerHTML = html || `<tr><td colspan="4" style="text-align:center;">데이터 없음</td></tr>`;
-    }
-
-    function setShortsPeriod(days, btn) { shortsPeriod = days; renderShortsStrategy(); }
-    function renderShortsStrategy() {
-        const date = document.getElementById("shortsDate").value;
-        const chartName = document.getElementById("shortsChartSelect").value;
-        const data = rawData.filter(d => d.Date === date && d.Chart === chartName);
-        if(data.length === 0) { document.getElementById("shortsKPI").innerHTML = "데이터 없음"; return; }
-        const top10 = data.filter(d => d.Rank <= 10 && d.Delta > 0);
-        const avgSpeed = top10.length ? Math.round(top10.reduce((a,b)=>a+b.Delta,0)/top10.length) : 0;
-        document.getElementById("shortsKPI").innerHTML = `<strong>💡 Insight:</strong> Top 10 평균화력 <span style="color:var(--primary)">+${avgSpeed.toLocaleString()}</span> / 일`;
-        if(scatterChartInst) scatterChartInst.destroy();
-        const ctx = document.getElementById('scatterChart').getContext('2d');
-        const points = data.filter(d => d.Delta > 0).map(d => ({ x: d.Views, y: d.Delta, title: d.Title, rank: d.Rank }));
-        scatterChartInst = new Chart(ctx, { type: 'scatter', data: { datasets: [{ label: 'Songs', data: points, backgroundColor: p=>p.raw.rank<=10?'#E62117':(p.raw.rank<=50?'#1A73E8':'#aaa') }] }, options: { responsive:true, maintainAspectRatio:false, scales: { x: {type:'logarithmic', title:{display:true, text:'누적'}}, y: {title:{display:true, text:'일간 생성'}} }, plugins: { tooltip: { callbacks: { label: c => `${c.raw.rank}위. ${c.raw.title}` } } } } });
-        const rookies = data.filter(d => d.Rank > 20 && d.Delta > 0).sort((a,b) => b.Delta - a.Delta);
-        document.querySelector("#rookieTable tbody").innerHTML = rookies.slice(0, 10).map(d => {
-            const idKey = d.Video_ID ? d.Video_ID : `${d.Artist}|${d.Title}`;
-            return `<tr onclick="openDetail('${idKey}')"><td>${d.Rank}</td><td style="color:#333">${d.Title}</td><td style="color:var(--primary)">+${(d.Delta*shortsPeriod).toLocaleString()}</td></tr>`;
-        }).join("");
-        const tbody = document.querySelector("#shortsTable tbody");
-        let html = "";
-        for(let i=0; i<5; i++) {
-            const s = i*10+1; const e = (i+1)*10;
-            const seg = data.filter(d => d.Rank >= s && d.Rank <= e);
-            const dSeg = seg.filter(d => d.Delta > 0);
-            const avgD = dSeg.length ? Math.round(dSeg.reduce((a,b)=>a+b.Delta,0)/dSeg.length) : 0;
-            html += `<tr><td>${s}~${e}위</td><td>${(seg.length?Math.round(seg.reduce((a,b)=>a+b.Views,0)/seg.length):0).toLocaleString()}</td><td style="color:var(--primary); font-weight:bold">+${avgD.toLocaleString()}</td></tr>`;
-        }
-        tbody.innerHTML = html;
-    }
-
-    function renderLongRun() {
-        const map = {}; rawData.forEach(d => { 
-            const idKey = d.Video_ID ? d.Video_ID : `${d.Artist}|${d.Title}`;
-            const k=`${d.Chart}|${idKey}`; 
-            if(!map[k]) map[k]={c:0, r:0, t:d.Title, a:d.Artist, v:idKey}; 
-            map[k].c++; map[k].r+=d.Rank; 
-        });
-        const zombies = Object.entries(map).map(([k,v]) => { const [c, vid] = k.split("|"); const ar=Math.round(v.r/v.c); const s=Math.round(v.c*1000/ar); return {chart:c, title:v.t, artist:v.a, days:v.c, ar, s, vid}; }).sort((a,b)=>b.s-a.s).slice(0,20);
-        document.querySelector("#zombieTable tbody").innerHTML = zombies.map(z => `<tr onclick="openDetail('${z.vid}')"><td style="color:#333">${z.title}</td><td>${z.days}일</td><td>${z.ar}위</td><td style="color:var(--blue); font-weight:bold">${z.s}</td><td>${z.s>=2000?'👑 God':(z.s>=1000?'🧟 Zombie':'🌱')}</td></tr>`).join("");
-    }
-
-    function openDetail(idKey) {
-        document.getElementById("detailModal").style.display = "block";
-        
-        const revCard = document.getElementById('modal-card-rev');
-        const revTh = document.getElementById('th-hist-rev');
-        
-        if(showRevenue) {
-            revCard.style.display = 'block';
-            revTh.style.display = '';
-        } else {
-            revCard.style.display = 'none';
-            revTh.style.display = 'none';
-        }
-
-        let hist;
-        if(idKey.includes("|")) {
-            const [artist, title] = idKey.split("|");
-            hist = rawData.filter(d => d.Artist === artist && d.Title === title).sort((a,b)=>new Date(b.Date)-new Date(a.Date));
-        } else {
-            hist = rawData.filter(d => d.Video_ID === idKey).sort((a,b)=>new Date(b.Date)-new Date(a.Date));
-        }
-
-        if(hist.length === 0) return;
-        const info = hist[0];
-        document.getElementById("modalTitle").innerText = info.Title;
-        document.getElementById("modalArtist").innerText = info.Artist;
-
-        const ytBtn = document.getElementById("ytLink");
-        if(info.Video_ID && info.Video_ID.length > 5) {
-            ytBtn.href = `https://www.youtube.com/watch?v=${info.Video_ID}`;
-            ytBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="white" style="margin-right:5px;"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg> Watch Video`;
-        } else {
-            const query = encodeURIComponent(`${info.Artist} ${info.Title}`);
-            ytBtn.href = `https://www.youtube.com/results?search_query=${query}`;
-            ytBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="white" style="margin-right:5px;"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg> Search on YouTube`;
-        }
-
-        const bestRank = Math.min(...hist.map(d=>d.Rank));
-        const peakView = Math.max(...hist.map(d=>d.Views));
-        
-        const dateMap = {};
-        hist.forEach(d => {
-            if(!dateMap[d.Date]) dateMap[d.Date] = [];
-            dateMap[d.Date].push(d);
-        });
-
-        let totalRev = 0;
-        Object.keys(dateMap).forEach(date => {
-            const items = dateMap[date];
-            const trendings = items.filter(i => i.Chart.includes("Trending"));
-            const others = items.filter(i => !i.Chart.includes("Trending"));
-
-            if (trendings.length > 0) {
-                totalRev += Math.max(...trendings.map(t => t.Revenue));
-            }
-            others.forEach(o => totalRev += o.Revenue);
-        });
-
-        document.getElementById("mBestRank").innerText = bestRank + "위";
-        document.getElementById("mPeakView").innerText = peakView.toLocaleString();
-        document.getElementById("mRevenue").innerText = "₩" + totalRev.toLocaleString();
-        
-        const isShorts = hist[0].Chart.includes("Shorts");
-        document.getElementById("viewChartTitle").innerText = isShorts ? "📊 쇼츠 생성량 추이" : "📊 일간 수치(Views/Points) 추이";
-        
-        if(vChart) vChart.destroy(); if(rChart) rChart.destroy();
-        const dates = [...new Set(hist.map(d=>d.Date))].sort();
-        const charts = [...new Set(hist.map(d=>d.Chart))];
-        const colors = ['#E62117', '#1A73E8', '#F9A825', '#2E7D32', '#1DB954', '#000000'];
-        const mkDs = (key) => charts.map((c,i) => ({ label: c, data: dates.map(dt => { const item=hist.find(h=>h.Date===dt&&h.Chart===c); return item?item[key]:null; }), borderColor:colors[i%6], tension:0.4, fill:false, spanGaps: true }));
-        vChart = new Chart(document.getElementById('viewChart'), { type:'line', data:{labels:dates, datasets:mkDs('Views')}, options:{responsive:true, maintainAspectRatio:false} });
-        rChart = new Chart(document.getElementById('rankChart'), { type:'line', data:{labels:dates, datasets:mkDs('Rank')}, options:{responsive:true, maintainAspectRatio:false, scales:{y:{reverse:true}}} });
-        
-        document.querySelector("#historyTable tbody").innerHTML = hist.map(d => {
-            let delta = d.Delta > 0 ? `+${d.Delta.toLocaleString()}` : (d.Delta < 0 ? `${d.Delta.toLocaleString()}` : "-");
-            let revCell = "";
-            if (showRevenue) {
-                revCell = `<td style="color:var(--green)">₩${d.Revenue.toLocaleString()}</td>`;
-            }
-            return `<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td style="color:${d.Delta>0?'var(--primary)':'inherit'}">${delta}</td>${revCell}</tr>`;
-        }).join("");
-    }
-    function closeModal() { document.getElementById("detailModal").style.display = "none"; }
-    window.onclick = function(e) { if(e.target == document.getElementById("detailModal")) closeModal(); }
+loadData();
 </script>
+
 </body>
 </html>
