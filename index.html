@@ -322,7 +322,9 @@
                             <th><span class="platform-badge" style="background:#2bb6ff">G</span> Genie</th>
                             <th><span class="platform-badge" style="background:#1db954">S</span> Spotify (Global)</th>
                             <th><span class="platform-badge" style="background:#1db954">S</span> Spotify (KR)</th>
-                            <th><span class="platform-badge" style="background:#000">B</span> Billboard Hot100</th>
+                            <th><span class="platform-badge" style="background:#000">B</span> Hot 100</th>
+                            <th><span class="platform-badge" style="background:#000">B</span> BB 200</th>
+                            <th><span class="platform-badge" style="background:#000">B</span> Global 200</th>
                             <th><span class="platform-badge" style="background:#ff0000">Y</span> YouTube (KR)</th>
                             <th><span class="platform-badge" style="background:#ff0000">Y</span> YouTube (US)</th>
                         </tr>
@@ -448,7 +450,6 @@
     }
 
     function updateVisibility() {
-        // 1. Hero Cards
         const kpiContainer = document.getElementById('kpi-container');
         const idsToHide = ['card-market', 'card-kr', 'card-us', 'card-dup'];
         
@@ -460,11 +461,8 @@
             idsToHide.forEach(id => document.getElementById(id).style.display = 'none');
         }
 
-        // 2. Table Header
         const thDaily = document.getElementById('th-daily-rev');
         if(thDaily) thDaily.style.display = showRevenue ? '' : 'none';
-
-        // 3. Re-render Table
         renderDaily();
     }
 
@@ -499,7 +497,6 @@
             let artist = getCol(4);
             if(!vid || vid.length < 5) vid = null; 
 
-            // Rank Parsing 강화: "Top 1", "1위" 등의 텍스트에서 숫자만 추출
             let rankRaw = getCol(2);
             let rankNum = parseInt(rankRaw.replace(/[^0-9]/g, "")) || 0;
 
@@ -630,7 +627,6 @@
             return a.Rank - b.Rank;
         });
 
-        // [수정] 합계 행 삭제됨: html 초기값은 빈 문자열
         let html = "";
 
         html += data.map(d => {
@@ -648,16 +644,14 @@
         tbody.innerHTML = html || `<tr><td colspan="7" style="text-align:center; padding:30px; color:#666;">데이터 없음</td></tr>`;
     }
 
-    // [중요 수정] 통합 랭킹 (Matrix) 렌더링 함수
+    // [수정] 통합 랭킹(Matrix) 렌더링 - 가운데 정렬 및 키값 매핑 수정
     function renderCross() {
         const tbody = document.querySelector("#crossTable tbody");
         const search = document.getElementById("crossSearch").value.toLowerCase();
         
-        // 가장 최근 날짜 기준
         const lastDate = rawData[rawData.length-1].Date;
         const data = rawData.filter(d => d.Date === lastDate);
 
-        // 1. 노래별로 그룹화 (아티스트 + 제목 기준)
         const songs = {};
         data.forEach(d => {
             const key = d.Title + "|" + d.Artist;
@@ -669,23 +663,23 @@
                     ranks: {} 
                 };
             }
-            // 차트별 순위 저장
             songs[key].ranks[d.Chart] = d.Rank;
         });
 
-        // 2. 검색 필터링 및 렌더링
         let songList = Object.values(songs);
         if(search) {
             songList = songList.filter(s => s.title.toLowerCase().includes(search) || s.artist.toLowerCase().includes(search));
         }
 
-        // 3. 차트 매핑 키 (시트의 정확한 Chart 명칭)
+        // [중요] Python 크롤러에서 수집하는 정확한 Chart 이름으로 매핑
         const KEYS = {
             melon: 'Melon_Daily_Top100',
             genie: 'Genie_Daily_Top200',
             sp_gl: 'Spotify_Global_Daily',
             sp_kr: 'Spotify_KR_Daily',
-            billboard: 'Billboard_Hot100',
+            bb_hot: 'Billboard_Hot100',
+            bb_200: 'Billboard_200',        // 추가됨
+            bb_gl: 'Billboard_Global200',   // 추가됨
             yt_kr: 'KR_Daily_Top_MV',
             yt_us: 'US_Daily_Top_MV'
         };
@@ -695,7 +689,7 @@
         let html = songList.map(s => {
             return `
             <tr onclick="openDetail('${s.idKey}')">
-                <td style="text-align:left;">
+                <td style="text-align:center;">
                     <div style="font-weight:bold; color:#000;">${s.title}</div>
                     <div style="font-size:0.85rem; color:#666;">${s.artist}</div>
                 </td>
@@ -703,13 +697,15 @@
                 <td>${renderRank(s.ranks[KEYS.genie])}</td>
                 <td>${renderRank(s.ranks[KEYS.sp_gl])}</td>
                 <td>${renderRank(s.ranks[KEYS.sp_kr])}</td>
-                <td>${renderRank(s.ranks[KEYS.billboard])}</td>
+                <td>${renderRank(s.ranks[KEYS.bb_hot])}</td>
+                <td>${renderRank(s.ranks[KEYS.bb_200])}</td>
+                <td>${renderRank(s.ranks[KEYS.bb_gl])}</td>
                 <td>${renderRank(s.ranks[KEYS.yt_kr])}</td>
                 <td>${renderRank(s.ranks[KEYS.yt_us])}</td>
             </tr>`;
         }).join("");
 
-        tbody.innerHTML = html || `<tr><td colspan="8" style="text-align:center; padding:30px;">데이터 없음</td></tr>`;
+        tbody.innerHTML = html || `<tr><td colspan="10" style="text-align:center; padding:30px;">데이터 없음</td></tr>`;
     }
 
     function renderTrend() {
