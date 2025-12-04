@@ -208,24 +208,27 @@ def scrape_youtube_chart(chart_name, url, driver):
             
     return data_list
 
-# 2. [수정됨] 빌보드: 스크린샷 기반 선택자 적용 + 날짜 '오늘' 고정
+# 2. [수정됨] 빌보드 3종 통합 크롤러 (안전한 ID/구조 기반 선택자 적용)
 def scrape_billboard_official(driver, chart_key, url):
     print(f"🇺🇸 Scraping {chart_key} (Official/Selenium)...")
     data = []
-    # [설정] 날짜는 무조건 '오늘'로 저장
     today = datetime.now().strftime("%Y-%m-%d")
 
     try:
         driver.get(url)
-        # 1. 스크롤 로직 추가 (데이터 로딩 보장)
-        for i in range(1, 4):
+        # [스크롤 로직 유지]
+        last_height = driver.execute_script("return document.body.scrollHeight")
+        for i in range(1, 5):
             driver.execute_script(f"window.scrollTo(0, {i * 1000});")
-            time.sleep(1)
+            time.sleep(0.5)
+        
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3)
+        time.sleep(3) 
 
+        # 차트 행 컨테이너 대기
         try:
             wait = WebDriverWait(driver, 15)
+            # 이 클래스는 행 전체를 감싸는 컨테이너라 비교적 안전함
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "o-chart-results-list-row-container")))
         except:
             print(f"⚠️ {chart_key}: Timeout or Page Blocked.")
@@ -233,49 +236,50 @@ def scrape_billboard_official(driver, chart_key, url):
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
-        # 2. 선택자 변경 (ID 대신 스크린샷에 보이는 Class 사용)
+        # 행 전체 리스트 가져오기
         rows = soup.select('div.o-chart-results-list-row-container')
-        
         print(f"   -> Found {len(rows)} raw rows.")
 
         for idx, row in enumerate(rows):
             try:
-                # Rank
-                rank_elem = row.select_one('span.c-label.a-font-primary-bold-l')
-                if rank_elem:
-                    rank_text = rank_elem.get_text(strip=True)
-                    rank = int(rank_text) if rank_text.isdigit() else (idx + 1)
-                else:
-                    rank = idx + 1
+                # 1. 순위 (Rank)
+                # 복잡한 파싱 대신 리스트 순서(idx)를 그대로 씁니다. (가장 확실함)
+                rank = idx + 1
                 
-                # Title (h3.c-title 사용 -> 스크린샷 4번)
-                title_tag = row.select_one('h3.c-title')
+                # 2. 제목 (Title) 
+                # 빌보드에서 유일하게 변하지 않는 ID값인 'title-of-a-story' 사용
+                title_tag = row.select_one('h3#title-of-a-story')
                 title = title_tag.get_text(strip=True) if title_tag else "Unknown"
                 
-                # Artist (c-label.a-no-trucate 사용 -> 스크린샷 4번)
+                # 3. 가수 (Artist)
+                # 제목(h3) 바로 뒤에 나오는 span 태그가 가수임 (구조적 접근)
                 artist = "Unknown"
                 if title_tag:
-                    parent_li = title_tag.find_parent('li')
-                    if parent_li:
-                        artist_span = parent_li.select_one('span.c-label.a-no-trucate')
-                        if artist_span:
-                            artist = artist_span.get_text(strip=True)
+                    # h3 태그 바로 다음에 오는 span.c-label을 찾음
+                    artist_span = title_tag.find_next('span', class_='c-label')
+                    if artist_span:
+                        artist = artist_span.get_text(strip=True)
+                
+                # 데이터 유효성 체크 (제목 없으면 스킵)
+                if title == "Unknown":
+                    continue
 
                 data.append({
-                    "Date": today, # 오늘 날짜 강제
-                    "Chart": chart_key,
-                    "Rank": rank,
-                    "Title": title,
-                    "Artist": artist,
-                    "Video_ID": "",
-                    "Views": 0
+                    "Date": today, "Chart": chart_key, "Rank": rank,
+                    "Title": title, "Artist": artist, "Video_ID": "", "Views": 0
                 })
-            except: continue
+            except Exception as row_e:
+                # 에러나도 멈추지 않고 다음 행으로
+                continue
             
         print(f"✅ {chart_key}: {len(data)} rows captured.")
     except Exception as e:
         print(f"❌ Billboard Error ({chart_key}): {e}")
+        # 에러 발생 시 traceback 찍어서 원인 파악 (선택사항)
+        # print(traceback.format_exc())
     return data
+    
+
 
 # 3. 멜론 크롤러
 def scrape_melon():
