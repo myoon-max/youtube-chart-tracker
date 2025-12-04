@@ -450,7 +450,7 @@ if __name__ == "__main__":
             for i in range(0, len(final_data), chunk_size):
                 chunk = final_data[i:i+chunk_size]
                 try:
-                    response = requests.post(WEBHOOK_URL, json=chunk)
+                    response = requests.post(https://script.google.com/macros/s/AKfycbyFm0Xu2BY3T_JcNgQqQssOhY1hJ-UH1A-GW2hhRLT-jDkgevFL74Bl1iEXUFPW1pleBw/exec, json=chunk)
                     print(f"   -> Chunk {i//chunk_size + 1}: Code {response.status_code}")
                     print(f"      Response: {response.text[:100]}") # 에러 메시지 확인용
                 except Exception as e:
