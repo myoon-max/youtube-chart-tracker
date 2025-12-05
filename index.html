@@ -333,11 +333,8 @@
             kpiContainer.classList.add('no-revenue');
             idsToHide.forEach(id => document.getElementById(id).style.display = 'none');
         }
-        
-        // 메인 테이블 헤더 토글
         const thDaily = document.getElementById('th-daily-rev');
         if(thDaily) thDaily.style.display = showRevenue ? '' : 'none';
-        
         renderDaily();
     }
 
@@ -362,20 +359,64 @@
         });
     }
 
+    // [핵심 수정] 줄바꿈(엔터)이 포함된 곡명도 완벽하게 읽어오는 강력한 파서
     function parseCSV(text) {
-        const lines = text.trim().split("\n");
-        const data = [];
-        for(let i=1; i<lines.length; i++) {
-            const row = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-            if(!row || row.length < 5) continue; 
-            
-            const getCol = (idx) => row[idx] ? row[idx].replace(/^"|"$/g, "").trim() : "";
-            let date = getCol(0); let chart = getCol(1); let rankRaw = getCol(2);
-            let title = getCol(3); let artist = getCol(4); let vid = getCol(5); let vStr = getCol(6);
+        const arr = [];
+        let quote = false; 
+        let row = [];
+        let col = '';
+        
+        // 엑셀/CSV 특유의 줄바꿈 문자 통일
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-            if(!vid || vid.length < 5) vid = null; 
-            let rankNum = parseInt(rankRaw.replace(/[^0-9]/g, "")) || 0;
-            let views = parseInt(vStr ? vStr.replace(/,/g, "") : "0") || 0;
+        for (let i = 0; i < text.length; i++) {
+            let cc = text[i];
+            let nc = text[i+1];
+
+            // 따옴표 시작/종료 체크
+            if (cc === '"') {
+                if (quote && nc === '"') { 
+                    col += '"'; i++; 
+                } else {
+                    quote = !quote; 
+                }
+            } 
+            // 콤마: 따옴표 밖이면 열 구분
+            else if (cc === ',' && !quote) {
+                row.push(col.trim());
+                col = '';
+            } 
+            // 줄바꿈: 따옴표 밖이면 행 구분
+            else if (cc === '\n' && !quote) {
+                row.push(col.trim());
+                col = '';
+                if(row.length > 0) arr.push(row);
+                row = [];
+            } 
+            else {
+                col += cc;
+            }
+        }
+        if (row.length > 0 || col.length > 0) {
+            row.push(col.trim());
+            arr.push(row);
+        }
+
+        const data = [];
+        // 헤더 제외하고 데이터 파싱
+        for(let i=1; i<arr.length; i++) {
+            const r = arr[i];
+            if(r.length < 5) continue; 
+            
+            // 기존 getCol 방식 대신 배열 인덱스 직접 사용
+            let date = r[0];
+            let chart = r[1];
+            let rankNum = parseInt(r[2].replace(/[^0-9]/g, "")) || 0;
+            let title = r[3];
+            let artist = r[4];
+            let vid = r[5];
+            if(!vid || vid.length < 5) vid = null;
+            let views = parseInt(r[6] ? r[6].replace(/,/g, "") : "0") || 0;
 
             data.push({ Date: date, Chart: chart, Rank: rankNum, Title: title, Artist: artist, Video_ID: vid, Views: views, Delta: 0, Revenue: 0 });
         }
@@ -500,7 +541,6 @@
         let list = Object.values(songs);
         if(search) list = list.filter(s => s.title.toLowerCase().includes(search) || s.artist.toLowerCase().includes(search));
         
-        // [수정 요청 5-1] YouTube 지표를 Daily MV로 명확히 매핑
         const KEYS = {
             m:'Melon_Daily_Top100', g:'Genie_Daily_Top200', sg:'Spotify_Global_Daily', sk:'Spotify_KR_Daily',
             bh:'Billboard_Hot100', b2:'Billboard_200', bg:'Billboard_Global200',
@@ -508,7 +548,6 @@
         };
         const keyArr = ['no', 'info', KEYS.m, KEYS.g, KEYS.sg, KEYS.sk, KEYS.bh, KEYS.b2, KEYS.bg, KEYS.yk, KEYS.yu];
 
-        // [수정 요청 5-2] 1위 누락 버그 해결을 위한 정렬 로직 강화
         list.sort((a, b) => {
             let valA, valB;
             const k = keyArr[matrixSortCol];
@@ -520,12 +559,9 @@
                 if(valA > valB) return matrixSortAsc ? 1 : -1;
                 return 0;
             } else { 
-                // 순위가 없으면 9999로 처리하여 맨 뒤로
                 valA = a.ranks[k] || 9999; 
                 valB = b.ranks[k] || 9999; 
-                // 숫자 비교
                 if (valA === valB) return 0;
-                // Ascending(기본): 1위가 상단. (1 < 9999 이므로 오름차순 시 작은게 위로 감)
                 return matrixSortAsc ? (valA - valB) : (valB - valA);
             }
         });
@@ -552,7 +588,6 @@
         document.getElementById("detailModal").style.display="block"; 
         const rev=document.getElementById('modal-card-rev'); 
         
-        // [수정 요청 1] 모달 헤더 및 카드 표시 제어
         if(showRevenue) {
             rev.style.display='block';
             document.getElementById('th-hist-rev').style.display='';
@@ -601,7 +636,6 @@
         const mainChart = songCharts[0];
         const viewData = dates.map(dt => { const item = hist.find(h => h.Date === dt && h.Chart === mainChart); return item ? item.Views : null; });
 
-        // [수정 요청 4] 차트 색상 변경 (검정 -> 초록) 및 포인트 크기 확대
         vChart=new Chart(document.getElementById('viewChart'), {
             type:'line',
             data:{
@@ -609,12 +643,12 @@
                 datasets:[{ 
                     label: mainChart + " (Views)", 
                     data: viewData, 
-                    borderColor: '#1E8E3E', // 초록색 변경
+                    borderColor: '#1E8E3E', 
                     backgroundColor: 'rgba(30, 142, 62, 0.1)', 
                     fill: true, 
                     tension: 0.4,
-                    pointRadius: 5,     // 포인트 크기 확대
-                    pointHoverRadius: 8 // 호버 크기 확대
+                    pointRadius: 5,     
+                    pointHoverRadius: 8 
                 }]
             },
             options:{ maintainAspectRatio:false }
@@ -630,9 +664,7 @@
         }); 
         
         document.querySelector("#historyTable tbody").innerHTML=hist.map(d=> {
-            // [수정 요청 2] 증감 색상 로직 복구 (Rank Up/Down 스타일 적용)
             const deltaStr = d.Delta > 0 ? `<span class="rank-up">▲${d.Delta.toLocaleString()}</span>` : (d.Delta < 0 ? `<span class="rank-down">▼${Math.abs(d.Delta).toLocaleString()}</span>` : "-");
-            // [수정 요청 1 & 3] 수익 표시 여부 체크 및 숫자 콤마 적용
             const revCell = showRevenue ? `<td class="money-text">₩${d.Revenue.toLocaleString()}</td>` : "";
             
             return `<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td>${deltaStr}</td>${revCell}</tr>`;
