@@ -149,8 +149,6 @@ def scrape_youtube_chart(chart_name, url, driver):
         # [디버깅] 만약 rows가 0개면 페이지 타이틀 출력 (차단 여부 확인)
         if len(rows) == 0:
             print(f"   ⚠️ Warning: 0 rows found. Page Title: {driver.title}")
-            # 비상용: ytmc-entry-row 클래스가 바뀌었을 수도 있으니 일반적인 리스트 확인
-            # (여기서는 일단 로깅만)
 
         data_list = []
         today = datetime.now().strftime("%Y-%m-%d")
@@ -214,7 +212,7 @@ def scrape_youtube_chart(chart_name, url, driver):
         print(f"❌ YouTube Error ({chart_name}): {e}")
         return []
 
-# 2. 빌보드 크롤러 (안전장치 강화판)
+# 2. 빌보드 크롤러 (안전장치 강화판 + 날짜는 오늘 날짜로 원상복구)
 def scrape_billboard_official(driver, chart_key, url):
     print(f"🇺🇸 [SafeMode] Scraping {chart_key}...")
     max_retries = 2
@@ -237,6 +235,10 @@ def scrape_billboard_official(driver, chart_key, url):
                 return []
 
             soup = BeautifulSoup(driver.page_source, 'html.parser')
+            
+            # [원상복구] 빌보드는 그냥 오늘 날짜로 저장
+            today = datetime.now().strftime("%Y-%m-%d")
+
             rows = soup.select('div.o-chart-results-list-row-container')
             print(f"   -> Found {len(rows)} row containers.")
 
@@ -245,8 +247,7 @@ def scrape_billboard_official(driver, chart_key, url):
                 continue 
 
             data = []
-            today = datetime.now().strftime("%Y-%m-%d")
-
+            
             for idx, row in enumerate(rows):
                 try:
                     rank = idx + 1
@@ -285,7 +286,7 @@ def scrape_billboard_official(driver, chart_key, url):
                 except: continue
             
             if len(data) > 0:
-                print(f"✅ {chart_key}: Captured {len(data)} rows.")
+                print(f"✅ {chart_key}: Captured {len(data)} rows ({today}).")
                 return data
 
         except Exception as e:
@@ -345,10 +346,12 @@ def scrape_genie():
     except Exception as e: print(f"❌ Genie Error: {e}")
     return data
 
-# 5. Kworb (날짜 Today 강제)
+# 5. Kworb (HTML 날짜 파싱 유지 - 스크린샷 요청 반영)
 def scrape_kworb(chart_key, url):
     print(f"🟢 Scraping {chart_key}...")
     data = []
+    
+    # 기본값은 오늘이지만, HTML에서 날짜를 찾으면 덮어씌움
     chart_date = datetime.now().strftime("%Y-%m-%d")
     TARGET_HEADER_KEYWORD = "Streams"
 
@@ -356,6 +359,23 @@ def scrape_kworb(chart_key, url):
         res = requests.get(url)
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, 'html.parser')
+        
+        # --- [날짜 추출 로직 유지] ---
+        try:
+            # 스크린샷에 있는 .pagetitle 클래스 탐색
+            pagetitle = soup.select_one('.pagetitle')
+            if pagetitle:
+                title_text = pagetitle.get_text()
+                # 예: "Spotify Daily Chart - Global - 2025/12/03 |" 에서 날짜 추출
+                match = re.search(r'(\d{4})/(\d{2})/(\d{2})', title_text)
+                if match:
+                    # YYYY/MM/DD -> YYYY-MM-DD 변환
+                    chart_date = f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+                    print(f"   📅 Detected Date from HTML: {chart_date}")
+        except Exception as de:
+            print(f"   ⚠️ Date parse failed: {de}")
+        # ---------------------------
+
         table = soup.find('table')
         if not table: return []
 
@@ -401,7 +421,7 @@ def scrape_kworb(chart_key, url):
                 final_val = int(val_clean) if val_clean else 0
 
                 data.append({
-                    "Date": chart_date,
+                    "Date": chart_date, # 추출한 날짜 사용
                     "Chart": chart_key,
                     "Rank": rank,
                     "Title": title,
@@ -410,7 +430,7 @@ def scrape_kworb(chart_key, url):
                     "Views": final_val
                 })
             except: continue
-        print(f"✅ {chart_key}: {len(data)} rows")
+        print(f"✅ {chart_key}: {len(data)} rows ({chart_date})")
     except Exception as e: print(f"❌ Kworb Error ({chart_key}): {e}")
     return data
 
