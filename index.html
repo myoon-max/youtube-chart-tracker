@@ -84,10 +84,6 @@
         .yt-btn { background: #FF0000; color: #fff; padding: 8px 20px; border-radius: 30px; text-decoration: none; font-weight: bold; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(255,0,0,0.2); transition: background 0.2s; }
         .yt-btn:hover { background: #cc0000; }
         
-        .info-icon { display: inline-block; width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 50%; background: #ddd; color: #fff; font-size: 12px; font-weight: bold; margin-left: 6px; cursor: help; position: relative; }
-        .info-icon:hover::after { content: attr(data-tooltip); position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); color: #fff; padding: 10px 14px; border-radius: 6px; font-size: 0.8rem; white-space: pre-line; width: 320px; z-index: 100; font-weight: normal; line-height: 1.5; text-align: left; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        
-        /* 모달 내부 차트 레이아웃 수정 */
         .chart-stack { display: flex; flex-direction: column; gap: 30px; margin-bottom: 40px; }
         .chart-box { background: #fff; border: 1px solid #eee; border-radius: 12px; padding: 20px; box-shadow: var(--shadow); }
         .chart-box.wide { width: 100%; height: 400px; display: flex; flex-direction: column; }
@@ -97,7 +93,6 @@
         .search-wrapper input { width: 100%; padding-left: 40px; border-radius: 20px; border: 1px solid #ddd; }
         .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #999; }
         .footer-info { text-align: center; color: #888; margin-top: 40px; font-size: 0.85rem; padding-top: 20px; border-top: 1px solid #ddd; }
-        .price-tag { display: inline-block; background: #fff; border: 1px solid #ddd; padding: 6px 12px; border-radius: 20px; margin: 0 5px; font-weight: 600; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.03); }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
@@ -274,7 +269,19 @@
             <div class="card" style="margin-top:60px; padding:0; border:none; box-shadow:none;">
                 <h3 style="margin-bottom:15px; color:#000;">📋 상세 이력</h3>
                 <div class="table-container">
-                    <table id="historyTable"><thead><tr><th>날짜</th><th>차트</th><th>순위</th><th>수치</th><th>증감</th><th id="th-hist-rev">수익 (Daily)</th></tr></thead><tbody></tbody></table>
+                    <table id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>날짜</th>
+                                <th>차트</th>
+                                <th>순위</th>
+                                <th>수치</th>
+                                <th>증감</th>
+                                <th id="th-hist-rev">수익 (Daily)</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -326,8 +333,11 @@
             kpiContainer.classList.add('no-revenue');
             idsToHide.forEach(id => document.getElementById(id).style.display = 'none');
         }
+        
+        // 메인 테이블 헤더 토글
         const thDaily = document.getElementById('th-daily-rev');
         if(thDaily) thDaily.style.display = showRevenue ? '' : 'none';
+        
         renderDaily();
     }
 
@@ -342,7 +352,7 @@
                 document.getElementById("header-date").innerText = lastDate;
                 document.getElementById("dailyDate").value = lastDate;
                 document.getElementById("shortsDate").value = lastDate;
-                document.getElementById("crossDate").value = lastDate; // 통합 탭 날짜 초기화
+                document.getElementById("crossDate").value = lastDate;
 
                 uniqueCharts = [...new Set(rawData.map(d => d.Chart))].sort();
                 updateChartFilter();
@@ -352,7 +362,6 @@
         });
     }
 
-    // 강력한 CSV 파서 (빈 값 처리)
     function parseCSV(text) {
         const lines = text.trim().split("\n");
         const data = [];
@@ -424,12 +433,10 @@
 
     function openTab(id, btn) { document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active')); document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active')); document.getElementById(id).classList.add('active'); btn.classList.add('active'); window.dispatchEvent(new Event('resize')); }
     
-    // [수정] 차트 필터 순서 강제 조정 (YouTube 우선)
     function updateChartFilter() { 
         const c = document.getElementById("countryFilter").value;
         const s = document.getElementById("chartFilter"); s.innerHTML='<option value="ALL">전체 차트</option>';
         
-        // 우선순위 정렬 로직
         const sortedCharts = uniqueCharts.sort((a,b) => {
             const score = (name) => {
                 if(name.includes("YouTube") || name.startsWith("KR_") || name.startsWith("US_")) return 1;
@@ -469,7 +476,6 @@
         }).join("") || `<tr><td colspan="7" style="text-align:center; padding:30px;">데이터 없음</td></tr>`;
     }
 
-    // 통합 랭킹 정렬 변수
     let matrixSortCol = 0;
     let matrixSortAsc = true;
 
@@ -479,10 +485,9 @@
         renderCross();
     }
 
-    // [수정] 통합 랭킹: 날짜 선택 & 정렬 기능 포함
     function renderCross() {
         const search = document.getElementById("crossSearch").value.toLowerCase();
-        const targetDate = document.getElementById("crossDate").value; // 통합 탭 전용 날짜
+        const targetDate = document.getElementById("crossDate").value;
         const data = rawData.filter(d => d.Date === targetDate);
         
         const songs = {};
@@ -495,6 +500,7 @@
         let list = Object.values(songs);
         if(search) list = list.filter(s => s.title.toLowerCase().includes(search) || s.artist.toLowerCase().includes(search));
         
+        // [수정 요청 5-1] YouTube 지표를 Daily MV로 명확히 매핑
         const KEYS = {
             m:'Melon_Daily_Top100', g:'Genie_Daily_Top200', sg:'Spotify_Global_Daily', sk:'Spotify_KR_Daily',
             bh:'Billboard_Hot100', b2:'Billboard_200', bg:'Billboard_Global200',
@@ -502,18 +508,26 @@
         };
         const keyArr = ['no', 'info', KEYS.m, KEYS.g, KEYS.sg, KEYS.sk, KEYS.bh, KEYS.b2, KEYS.bg, KEYS.yk, KEYS.yu];
 
-        // 정렬 로직
+        // [수정 요청 5-2] 1위 누락 버그 해결을 위한 정렬 로직 강화
         list.sort((a, b) => {
             let valA, valB;
             const k = keyArr[matrixSortCol];
             
-            if (matrixSortCol === 0) return matrixSortAsc ? 0 : 0; // No. 정렬은 렌더링 시 인덱스로 처리
-            if (matrixSortCol === 1) { valA = a.title; valB = b.title; }
-            else { valA = a.ranks[k] || 9999; valB = b.ranks[k] || 9999; }
-
-            if(valA < valB) return matrixSortAsc ? -1 : 1;
-            if(valA > valB) return matrixSortAsc ? 1 : -1;
-            return 0;
+            if (matrixSortCol === 0) return 0;
+            if (matrixSortCol === 1) { 
+                valA = a.title; valB = b.title; 
+                if(valA < valB) return matrixSortAsc ? -1 : 1;
+                if(valA > valB) return matrixSortAsc ? 1 : -1;
+                return 0;
+            } else { 
+                // 순위가 없으면 9999로 처리하여 맨 뒤로
+                valA = a.ranks[k] || 9999; 
+                valB = b.ranks[k] || 9999; 
+                // 숫자 비교
+                if (valA === valB) return 0;
+                // Ascending(기본): 1위가 상단. (1 < 9999 이므로 오름차순 시 작은게 위로 감)
+                return matrixSortAsc ? (valA - valB) : (valB - valA);
+            }
         });
 
         const rr = (v) => v ? `<span class="matrix-rank">${v}</span>` : `<span class="matrix-null">-</span>`;
@@ -534,11 +548,18 @@
     function renderShortsStrategy() { const d=document.getElementById("shortsDate").value; const c=document.getElementById("shortsChartSelect").value; const data=rawData.filter(x=>x.Date===d&&x.Chart===c); if(!data.length){ document.getElementById("shortsKPI").innerHTML="데이터 없음"; return; } const top10=data.filter(x=>x.Rank<=10&&x.Delta>0); const avg=top10.length?Math.round(top10.reduce((a,b)=>a+b.Delta,0)/top10.length):0; document.getElementById("shortsKPI").innerHTML=`<strong>💡 Insight:</strong> Top 10 평균화력 <span style="color:var(--primary)">+${avg.toLocaleString()}</span> / 일`; if(scatterChartInst) scatterChartInst.destroy(); const ctx=document.getElementById('scatterChart').getContext('2d'); scatterChartInst=new Chart(ctx,{type:'scatter',data:{datasets:[{label:'Songs',data:data.filter(x=>x.Delta>0).map(x=>({x:x.Views,y:x.Delta,t:x.Title,r:x.Rank})),backgroundColor:p=>p.raw.r<=10?'#E62117':(p.raw.r<=50?'#1A73E8':'#aaa')}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{type:'logarithmic'}}}}); document.querySelector("#rookieTable tbody").innerHTML=data.filter(x=>x.Rank>20&&x.Delta>0).sort((a,b)=>b.Delta-a.Delta).slice(0,10).map(x=>`<tr onclick="openDetail('${x.Video_ID||x.Title}')"><td>${x.Rank}</td><td>${x.Title}</td><td style="color:var(--primary)">+${(x.Delta*shortsPeriod).toLocaleString()}</td></tr>`).join(""); const t=document.querySelector("#shortsTable tbody"); let h=""; for(let i=0;i<5;i++){ const s=i*10+1, e=(i+1)*10; const seg=data.filter(x=>x.Rank>=s&&x.Rank<=e); const dseg=seg.filter(x=>x.Delta>0); const av=dseg.length?Math.round(dseg.reduce((a,b)=>a+b.Delta,0)/dseg.length):0; h+=`<tr><td>${s}~${e}위</td><td>${(seg.length?Math.round(seg.reduce((a,b)=>a+b.Views,0)/seg.length):0).toLocaleString()}</td><td style="color:var(--primary)">+${av.toLocaleString()}</td></tr>`; } t.innerHTML=h; }
     function renderLongRun() { const m={}; rawData.forEach(d=>{ const k=d.Video_ID||`${d.Title}|${d.Artist}`; if(!m[k]) m[k]={c:0,r:0,t:d.Title,v:k}; m[k].c++; m[k].r+=d.Rank; }); const z=Object.values(m).map(v=>({t:v.t, d:v.c, s:Math.round(v.c*1000/(v.r/v.c)), v:v.v})).sort((a,b)=>b.s-a.s).slice(0,20); document.querySelector("#zombieTable tbody").innerHTML=z.map(x=>`<tr onclick="openDetail('${x.v}')"><td>${x.t}</td><td>${x.d}일</td><td>-</td><td style="color:var(--blue)">${x.s}</td><td>${x.s>=1000?'🧟':'🌱'}</td></tr>`).join(""); }
     
-    // [수정] 모달 상세: 그래프 2개 상하 배치 & 통합 랭킹 그래프 강화
     function openDetail(id) { 
         document.getElementById("detailModal").style.display="block"; 
         const rev=document.getElementById('modal-card-rev'); 
-        if(showRevenue) rev.style.display='block'; else rev.style.display='none'; 
+        
+        // [수정 요청 1] 모달 헤더 및 카드 표시 제어
+        if(showRevenue) {
+            rev.style.display='block';
+            document.getElementById('th-hist-rev').style.display='';
+        } else {
+            rev.style.display='none';
+            document.getElementById('th-hist-rev').style.display='none';
+        }
         
         let hist;
         if(id.includes("|")){ const [a,t]=id.split("|"); hist=rawData.filter(d=>d.Artist===a&&d.Title===t).sort((a,b)=>new Date(b.Date)-new Date(a.Date)); } 
@@ -563,9 +584,8 @@
         
         const dates=[...new Set(hist.map(d=>d.Date))].sort(); 
         
-        // 통합 랭킹 그래프 (Rank Chart) 데이터셋 생성 - 모든 차트 포함
         const songCharts = [...new Set(hist.map(d => d.Chart))];
-        const colors = ['#E62117', '#1A73E8', '#00d344', '#1db954', '#000000', '#F9A825', '#9C27B0']; // 색상 팔레트
+        const colors = ['#E62117', '#1A73E8', '#00d344', '#1db954', '#000000', '#F9A825', '#9C27B0'];
         
         const rankDatasets = songCharts.map((cName, idx) => ({
             label: cName,
@@ -574,19 +594,28 @@
             backgroundColor: colors[idx % colors.length],
             tension: 0.3,
             spanGaps: true,
-            pointRadius: 5,       // [요청] 점 크기 확대
-            pointHoverRadius: 8   // [요청] 호버 시 더 크게
+            pointRadius: 5,
+            pointHoverRadius: 8
         }));
 
-        // 조회수 그래프 (View Chart) - 대표 차트 1개 또는 합산 (여기서는 가장 많이 노출된 차트 기준)
         const mainChart = songCharts[0];
         const viewData = dates.map(dt => { const item = hist.find(h => h.Date === dt && h.Chart === mainChart); return item ? item.Views : null; });
 
+        // [수정 요청 4] 차트 색상 변경 (검정 -> 초록) 및 포인트 크기 확대
         vChart=new Chart(document.getElementById('viewChart'), {
             type:'line',
             data:{
                 labels:dates,
-                datasets:[{ label: mainChart + " (Views)", data: viewData, borderColor: '#333', backgroundColor: 'rgba(0,0,0,0.1)', fill: true, tension: 0.4 }]
+                datasets:[{ 
+                    label: mainChart + " (Views)", 
+                    data: viewData, 
+                    borderColor: '#1E8E3E', // 초록색 변경
+                    backgroundColor: 'rgba(30, 142, 62, 0.1)', 
+                    fill: true, 
+                    tension: 0.4,
+                    pointRadius: 5,     // 포인트 크기 확대
+                    pointHoverRadius: 8 // 호버 크기 확대
+                }]
             },
             options:{ maintainAspectRatio:false }
         }); 
@@ -596,11 +625,18 @@
             data:{ labels:dates, datasets: rankDatasets },
             options:{ 
                 maintainAspectRatio:false, 
-                scales:{ y:{ reverse:true, beginAtZero: false } } // 순위는 1위가 위로 가도록 반전
+                scales:{ y:{ reverse:true, beginAtZero: false } }
             }
         }); 
         
-        document.querySelector("#historyTable tbody").innerHTML=hist.map(d=>`<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td>${d.Delta}</td>${showRevenue?`<td>₩${d.Revenue}</td>`:""}</tr>`).join(""); 
+        document.querySelector("#historyTable tbody").innerHTML=hist.map(d=> {
+            // [수정 요청 2] 증감 색상 로직 복구 (Rank Up/Down 스타일 적용)
+            const deltaStr = d.Delta > 0 ? `<span class="rank-up">▲${d.Delta.toLocaleString()}</span>` : (d.Delta < 0 ? `<span class="rank-down">▼${Math.abs(d.Delta).toLocaleString()}</span>` : "-");
+            // [수정 요청 1 & 3] 수익 표시 여부 체크 및 숫자 콤마 적용
+            const revCell = showRevenue ? `<td class="money-text">₩${d.Revenue.toLocaleString()}</td>` : "";
+            
+            return `<tr><td>${d.Date}</td><td>${d.Chart}</td><td>${d.Rank}</td><td>${d.Views.toLocaleString()}</td><td>${deltaStr}</td>${revCell}</tr>`;
+        }).join(""); 
     }
     function closeModal() { document.getElementById("detailModal").style.display="none"; }
     window.onclick=function(e){if(e.target==document.getElementById("detailModal"))closeModal();}
