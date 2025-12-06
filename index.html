@@ -535,7 +535,12 @@
         data.forEach(d => {
             const key = d.Title + "|" + d.Artist;
             if(!songs[key]) songs[key] = { title: d.Title, artist: d.Artist, id: d.Video_ID||key, ranks: {} };
-            songs[key].ranks[d.Chart] = d.Rank;
+            
+            // [Fix] 기존 순위가 없거나, 현재 순위(d.Rank)가 기존보다 높을(작을) 때만 업데이트
+            if (!songs[key].ranks[d.Chart] || d.Rank < songs[key].ranks[d.Chart]) {
+                songs[key].ranks[d.Chart] = d.Rank;
+                if(d.Video_ID) songs[key].id = d.Video_ID; 
+            }
         });
         
         let list = Object.values(songs);
