@@ -152,7 +152,8 @@
 
     <div class="tabs">
         <button class="tab-btn active" onclick="openTab('daily', this)">📅 데일리 & 수익</button>
-        <button class="tab-btn" onclick="openTab('cross', this)">🌐 통합 랭킹 (Matrix)</button>
+        <button class="tab-btn" onclick="openTab('matrix', this)">🌐 통합 랭킹 (Matrix)</button>
+        <button class="tab-btn" onclick="openTab('multi-chart', this)">🔀 멀티 차트 분석</button>
         <button class="tab-btn" onclick="openTab('trend', this)">📈 월간/연간 추이</button>
         <button class="tab-btn" onclick="openTab('shorts-strategy', this)">⚡ 쇼츠 바이럴</button>
         <button class="tab-btn" onclick="openTab('long-run', this)">🧟 롱런(좀비) 지수</button>
@@ -172,7 +173,7 @@
         </div>
     </div>
 
-    <div id="cross" class="tab-content">
+    <div id="matrix" class="tab-content">
         <div class="card">
             <div class="controls">
                 <h3>🌐 플랫폼 통합 순위 현황</h3>
@@ -198,6 +199,31 @@
                             <th onclick="sortMatrix(8)"><span class="platform-badge" style="background:#000">B</span> Global 200 ↕</th>
                             <th onclick="sortMatrix(9)"><span class="platform-badge" style="background:#ff0000">Y</span> YouTube (KR) ↕</th>
                             <th onclick="sortMatrix(10)"><span class="platform-badge" style="background:#ff0000">Y</span> YouTube (US) ↕</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="multi-chart" class="tab-content">
+        <div class="card">
+            <div class="controls">
+                <h3>🔗 멀티 차트 진입 아티스트 (YouTube Only)</h3>
+                <div class="search-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="multiSearch" placeholder="검색..." onkeyup="renderMultiChart()">
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="multiTable">
+                    <thead>
+                        <tr>
+                            <th>아티스트 - 노래</th>
+                            <th>진입 차트 수</th>
+                            <th>포함된 차트 목록</th>
+                            <th>최고 순위</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -354,61 +380,53 @@
                 uniqueCharts = [...new Set(rawData.map(d => d.Chart))].sort();
                 updateChartFilter();
                 updateSummary(lastDate);
-                renderDaily(); renderCross(); renderTrend(); renderShortsStrategy(); renderLongRun();
+                renderDaily(); renderCross(); renderMultiChart(); renderTrend(); renderShortsStrategy(); renderLongRun();
             }
         });
     }
 
-    // [핵심 수정] 줄바꿈(엔터)이 포함된 곡명도 완벽하게 읽어오는 강력한 파서
+    // [1] 데이터 정규화 함수 (괄호, with, feat 제거 및 소문자화)
+    function normalizeString(str) {
+        if (!str) return "";
+        return str.toLowerCase()
+            .replace(/\(.*\)/g, "") // 괄호 제거
+            .replace(/\[.*\]/g, "") // 대괄호 제거
+            .replace(/with\s+.*/g, "") // with 뒤 제거
+            .replace(/feat\.?.*/g, "") // feat 뒤 제거
+            .replace(/[^a-z0-9가-힣]/g, "") // 특수문자 제거
+            .trim();
+    }
+
     function parseCSV(text) {
         const arr = [];
         let quote = false; 
         let row = [];
         let col = '';
         
-        // 엑셀/CSV 특유의 줄바꿈 문자 통일
         text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
         for (let i = 0; i < text.length; i++) {
             let cc = text[i];
             let nc = text[i+1];
 
-            // 따옴표 시작/종료 체크
             if (cc === '"') {
-                if (quote && nc === '"') { 
-                    col += '"'; i++; 
-                } else {
-                    quote = !quote; 
-                }
+                if (quote && nc === '"') { col += '"'; i++; } 
+                else { quote = !quote; }
             } 
-            // 콤마: 따옴표 밖이면 열 구분
-            else if (cc === ',' && !quote) {
-                row.push(col.trim());
-                col = '';
-            } 
-            // 줄바꿈: 따옴표 밖이면 행 구분
+            else if (cc === ',' && !quote) { row.push(col.trim()); col = ''; } 
             else if (cc === '\n' && !quote) {
-                row.push(col.trim());
-                col = '';
-                if(row.length > 0) arr.push(row);
-                row = [];
+                row.push(col.trim()); col = '';
+                if(row.length > 0) arr.push(row); row = [];
             } 
-            else {
-                col += cc;
-            }
+            else { col += cc; }
         }
-        if (row.length > 0 || col.length > 0) {
-            row.push(col.trim());
-            arr.push(row);
-        }
+        if (row.length > 0 || col.length > 0) { row.push(col.trim()); arr.push(row); }
 
         const data = [];
-        // 헤더 제외하고 데이터 파싱
         for(let i=1; i<arr.length; i++) {
             const r = arr[i];
             if(r.length < 5) continue; 
             
-            // 기존 getCol 방식 대신 배열 인덱스 직접 사용
             let date = r[0];
             let chart = r[1];
             let rankNum = parseInt(r[2].replace(/[^0-9]/g, "")) || 0;
@@ -418,7 +436,16 @@
             if(!vid || vid.length < 5) vid = null;
             let views = parseInt(r[6] ? r[6].replace(/,/g, "") : "0") || 0;
 
-            data.push({ Date: date, Chart: chart, Rank: rankNum, Title: title, Artist: artist, Video_ID: vid, Views: views, Delta: 0, Revenue: 0 });
+            // 정규화 키 생성
+            const normKey = normalizeString(title) + "|" + normalizeString(artist);
+
+            data.push({ 
+                Date: date, Chart: chart, Rank: rankNum, 
+                Title: title, Artist: artist, 
+                Video_ID: vid, Views: views, 
+                Delta: 0, Revenue: 0,
+                NormKey: normKey // 매핑용 키 저장
+            });
         }
         return data.sort((a,b) => new Date(a.Date) - new Date(b.Date));
     }
@@ -426,7 +453,8 @@
     function calculateStats() {
         const map = {};
         rawData.forEach(d => {
-            const idKey = d.Video_ID ? d.Video_ID : `${d.Title}|${d.Artist}`;
+            // 통계를 낼 때는 ID 우선, 없으면 정규화 키 사용
+            const idKey = d.Video_ID ? d.Video_ID : d.NormKey;
             const key = `${d.Chart}|${idKey}`;
             if(!map[key]) map[key] = []; map[key].push(d);
         });
@@ -458,7 +486,7 @@
             let rev = d.Revenue;
             if(d.Chart.includes("US")) usSum+=rev; else krSum+=rev;
             if(d.Chart.includes("Trending")) {
-                const k = d.Video_ID || `${d.Title}|${d.Artist}`;
+                const k = d.Video_ID || d.NormKey;
                 if(!trendMap[k]) trendMap[k]=rev; else { dup++; if(rev>trendMap[k]) trendMap[k]=rev; }
             } else total+=rev;
         });
@@ -512,6 +540,7 @@
         document.querySelector("#dailyTable tbody").innerHTML = data.map(d => {
             const delta = d.Delta > 0 ? `<span class="rank-up">▲${d.Delta.toLocaleString()}</span>` : (d.Delta < 0 ? `<span class="rank-down">▼${Math.abs(d.Delta).toLocaleString()}</span>` : "-");
             const rev = showRevenue ? `<td class="money-text">₩${d.Revenue.toLocaleString()}</td>` : "";
+            // 상세 페이지 ID로 NormKey 사용 X, Video_ID 우선
             const id = d.Video_ID || `${d.Artist}|${d.Title}`;
             return `<tr onclick="openDetail('${id}')"><td>${d.Chart}</td><td>${d.Rank}</td><td class="song-title">${d.Title}</td><td>${d.Artist}</td><td style="font-weight:bold">${d.Views.toLocaleString()}</td><td>${delta}</td>${rev}</tr>`;
         }).join("") || `<tr><td colspan="7" style="text-align:center; padding:30px;">데이터 없음</td></tr>`;
@@ -532,25 +561,47 @@
         const data = rawData.filter(d => d.Date === targetDate);
         
         const songs = {};
-        data.forEach(d => {
-            const key = d.Title + "|" + d.Artist;
-            if(!songs[key]) songs[key] = { title: d.Title, artist: d.Artist, id: d.Video_ID||key, ranks: {} };
-            
-            // [Fix] 기존 순위가 없거나, 현재 순위(d.Rank)가 기존보다 높을(작을) 때만 업데이트
-            if (!songs[key].ranks[d.Chart] || d.Rank < songs[key].ranks[d.Chart]) {
-                songs[key].ranks[d.Chart] = d.Rank;
-                if(d.Video_ID) songs[key].id = d.Video_ID; 
-            }
-        });
         
-        let list = Object.values(songs);
-        if(search) list = list.filter(s => s.title.toLowerCase().includes(search) || s.artist.toLowerCase().includes(search));
-        
+        // Matrix 탭에 표시되는 차트 목록
         const KEYS = {
             m:'Melon_Daily_Top100', g:'Genie_Daily_Top200', sg:'Spotify_Global_Daily', sk:'Spotify_KR_Daily',
             bh:'Billboard_Hot100', b2:'Billboard_200', bg:'Billboard_Global200',
             yk:'KR_Daily_Top_MV', yu:'US_Daily_Top_MV'
         };
+        const validCharts = [KEYS.m, KEYS.g, KEYS.sg, KEYS.sk, KEYS.bh, KEYS.b2, KEYS.bg, KEYS.yk, KEYS.yu];
+
+        data.forEach(d => {
+            // [1] 정규화된 키(NormKey)를 사용하여 같은 곡 병합
+            const key = d.NormKey;
+            
+            // 아직 없으면 초기화
+            if(!songs[key]) {
+                songs[key] = { 
+                    title: d.Title, // 화면에는 원본 제목 표시
+                    artist: d.Artist, 
+                    id: d.Video_ID || (d.Artist + "|" + d.Title), 
+                    ranks: {} 
+                };
+            }
+            
+            // 기존 순위보다 더 높으면(작으면) 업데이트 (1위 > 73위)
+            if (!songs[key].ranks[d.Chart] || d.Rank < songs[key].ranks[d.Chart]) {
+                songs[key].ranks[d.Chart] = d.Rank;
+                // 1위 영상 ID 우선 확보
+                if(d.Video_ID) songs[key].id = d.Video_ID; 
+            }
+        });
+        
+        let list = Object.values(songs);
+
+        // [2] 9개 주요 차트에 순위가 하나도 없는 곡(예: Weekly only) 제거
+        list = list.filter(s => {
+            const hasAnyRank = validCharts.some(chartName => s.ranks[chartName]);
+            return hasAnyRank;
+        });
+
+        if(search) list = list.filter(s => s.title.toLowerCase().includes(search) || s.artist.toLowerCase().includes(search));
+        
         const keyArr = ['no', 'info', KEYS.m, KEYS.g, KEYS.sg, KEYS.sk, KEYS.bh, KEYS.b2, KEYS.bg, KEYS.yk, KEYS.yu];
 
         list.sort((a, b) => {
@@ -584,6 +635,52 @@
             </tr>`).join("") || `<tr><td colspan="11" style="text-align:center; padding:30px;">데이터 없음 (${targetDate})</td></tr>`;
     }
 
+    // [3] 요청하신 "멀티 차트 분석" 기능 (YouTube Only)
+    function renderMultiChart() {
+        const tbody = document.querySelector("#multiTable tbody");
+        const search = document.getElementById("multiSearch").value.toLowerCase();
+        
+        const lastDate = rawData[rawData.length-1].Date;
+        const data = rawData.filter(d => d.Date === lastDate);
+        const map = {};
+
+        data.forEach(d => { 
+            // YouTube 차트만 대상 (KR_..., US_...)
+            if(!d.Chart.startsWith("KR_") && !d.Chart.startsWith("US_")) return; 
+            
+            const k = d.NormKey; 
+            if(!map[k]) {
+                map[k] = { 
+                    artist: d.Artist, 
+                    title: d.Title, 
+                    charts: [], 
+                    minRank: 999, 
+                    id: d.Video_ID || (d.Artist + "|" + d.Title)
+                }; 
+            }
+            // 중복 차트 방지
+            if(!map[k].charts.includes(d.Chart)) map[k].charts.push(d.Chart);
+            if(d.Rank < map[k].minRank) map[k].minRank = d.Rank; 
+        });
+
+        const crosses = Object.values(map)
+            .filter(v => v.charts.length > 1) // 2개 이상 차트 진입
+            .sort((a,b) => b.charts.length - a.charts.length);
+
+        let html = crosses.filter(v => 
+            v.title.toLowerCase().includes(search) || v.artist.toLowerCase().includes(search)
+        ).map(v => 
+            `<tr onclick="openDetail('${v.id}')">
+                <td class="song-title">${v.title} <span style="font-size:0.85em; color:#666;">(${v.artist})</span></td>
+                <td style="font-weight:bold; color:var(--primary)">${v.charts.length}개</td>
+                <td style="font-size:0.85em; color:#666;">${v.charts.join(", ")}</td>
+                <td>${v.minRank}위</td>
+            </tr>`
+        ).join("");
+
+        tbody.innerHTML = html || `<tr><td colspan="4" style="text-align:center; padding:30px;">데이터 없음</td></tr>`;
+    }
+
     function renderTrend() { const stats={}; rawData.forEach(d=>{ const k=d.Date.substring(0,7)+"|"+d.Chart; if(!stats[k]) stats[k]={s:[0,0,0,0,0,0],c:[0,0,0,0,0,0],sum:0,cnt:0}; const s=stats[k]; let i=-1; if(d.Rank<=10)i=0;else if(d.Rank<=30)i=1;else if(d.Rank<=50)i=2;else if(d.Rank<=70)i=3;else if(d.Rank<=100)i=4; if(i>=0){s.s[i]+=d.Views;s.c[i]++;} if(d.Rank===(d.Chart.includes("Trending")?20:100)){s.sum+=d.Views;s.cnt++;} }); document.querySelector("#trendTable tbody").innerHTML=Object.keys(stats).sort().reverse().map(k=>{ const [m,c]=k.split("|"); const s=stats[k]; let h=""; for(let i=0;i<5;i++) h+=`<td>${s.c[i]?Math.round(s.s[i]/s.c[i]).toLocaleString():"-"}</td>`; return `<tr><td>${m}</td><td>${c}</td>${h}<td class="highlight-cut">${s.cnt?Math.round(s.sum/s.cnt).toLocaleString():"-"}</td></tr>`; }).join(""); }
     function setShortsPeriod(d,b) { shortsPeriod=d; renderShortsStrategy(); }
     function renderShortsStrategy() { const d=document.getElementById("shortsDate").value; const c=document.getElementById("shortsChartSelect").value; const data=rawData.filter(x=>x.Date===d&&x.Chart===c); if(!data.length){ document.getElementById("shortsKPI").innerHTML="데이터 없음"; return; } const top10=data.filter(x=>x.Rank<=10&&x.Delta>0); const avg=top10.length?Math.round(top10.reduce((a,b)=>a+b.Delta,0)/top10.length):0; document.getElementById("shortsKPI").innerHTML=`<strong>💡 Insight:</strong> Top 10 평균화력 <span style="color:var(--primary)">+${avg.toLocaleString()}</span> / 일`; if(scatterChartInst) scatterChartInst.destroy(); const ctx=document.getElementById('scatterChart').getContext('2d'); scatterChartInst=new Chart(ctx,{type:'scatter',data:{datasets:[{label:'Songs',data:data.filter(x=>x.Delta>0).map(x=>({x:x.Views,y:x.Delta,t:x.Title,r:x.Rank})),backgroundColor:p=>p.raw.r<=10?'#E62117':(p.raw.r<=50?'#1A73E8':'#aaa')}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{type:'logarithmic'}}}}); document.querySelector("#rookieTable tbody").innerHTML=data.filter(x=>x.Rank>20&&x.Delta>0).sort((a,b)=>b.Delta-a.Delta).slice(0,10).map(x=>`<tr onclick="openDetail('${x.Video_ID||x.Title}')"><td>${x.Rank}</td><td>${x.Title}</td><td style="color:var(--primary)">+${(x.Delta*shortsPeriod).toLocaleString()}</td></tr>`).join(""); const t=document.querySelector("#shortsTable tbody"); let h=""; for(let i=0;i<5;i++){ const s=i*10+1, e=(i+1)*10; const seg=data.filter(x=>x.Rank>=s&&x.Rank<=e); const dseg=seg.filter(x=>x.Delta>0); const av=dseg.length?Math.round(dseg.reduce((a,b)=>a+b.Delta,0)/dseg.length):0; h+=`<tr><td>${s}~${e}위</td><td>${(seg.length?Math.round(seg.reduce((a,b)=>a+b.Views,0)/seg.length):0).toLocaleString()}</td><td style="color:var(--primary)">+${av.toLocaleString()}</td></tr>`; } t.innerHTML=h; }
@@ -602,7 +699,13 @@
         }
         
         let hist;
-        if(id.includes("|")){ const [a,t]=id.split("|"); hist=rawData.filter(d=>d.Artist===a&&d.Title===t).sort((a,b)=>new Date(b.Date)-new Date(a.Date)); } 
+        if(id.includes("|")){ 
+            const [a,t]=id.split("|"); 
+            // 정규화된 키로 상세 조회 (매핑된 모든 곡 가져오기)
+            const normA = normalizeString(a);
+            const normT = normalizeString(t);
+            hist=rawData.filter(d=> normalizeString(d.Artist) === normA && normalizeString(d.Title) === normT).sort((a,b)=>new Date(b.Date)-new Date(a.Date)); 
+        } 
         else { hist=rawData.filter(d=>d.Video_ID===id).sort((a,b)=>new Date(b.Date)-new Date(a.Date)); } 
         
         if(!hist.length) return; 
