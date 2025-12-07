@@ -555,79 +555,74 @@
         renderCross();
     }
 
+    // [수정] 통합 랭킹: 아티스트명 정규화(영어 포함시 영어만 추출)로 중복 제거
     function renderCross() {
         const search = document.getElementById("crossSearch").value.toLowerCase();
-        const targetDate = document.getElementById("crossDate").value;
+        const targetDate = document.getElementById("crossDate").value; 
         const data = rawData.filter(d => d.Date === targetDate);
         
         const songs = {};
+        data.forEach(d => {
+            // 1. 제목 정규화 (공백 제거, 소문자)
+            const safeTitle = d.Title.toLowerCase().replace(/\s/g, "");
+            
+            // 2. 아티스트 정규화 (핵심 수정 사항)
+            // 영어가 포함된 이름(예: "화사 (HWASA)")이면, 한글/특수문자 제거하고 "hwasa"만 남김
+            // 영어가 없으면(예: "임영웅") 그대로 둠
+            let safeArtist = d.Artist.toLowerCase().replace(/\s/g, "");
+            if(/[a-z]/.test(safeArtist)) {
+                safeArtist = safeArtist.replace(/[^a-z0-9]/g, "");
+            }
+
+            // 정규화된 키 생성
+            const key = safeTitle + "|" + safeArtist;
+
+            if(!songs[key]) {
+                songs[key] = { 
+                    title: d.Title,   // 화면 표시용 원본 제목
+                    artist: d.Artist, // 화면 표시용 원본 아티스트
+                    id: d.Video_ID || key, 
+                    ranks: {} 
+                };
+            }
+            // 해당 키에 차트 순위 매핑
+            songs[key].ranks[d.Chart] = d.Rank;
+        });
         
-        // Matrix 탭에 표시되는 차트 목록
+        let list = Object.values(songs);
+        if(search) list = list.filter(s => s.title.toLowerCase().includes(search) || s.artist.toLowerCase().includes(search));
+        
         const KEYS = {
             m:'Melon_Daily_Top100', g:'Genie_Daily_Top200', sg:'Spotify_Global_Daily', sk:'Spotify_KR_Daily',
             bh:'Billboard_Hot100', b2:'Billboard_200', bg:'Billboard_Global200',
             yk:'KR_Daily_Top_MV', yu:'US_Daily_Top_MV'
         };
-        const validCharts = [KEYS.m, KEYS.g, KEYS.sg, KEYS.sk, KEYS.bh, KEYS.b2, KEYS.bg, KEYS.yk, KEYS.yu];
-
-        data.forEach(d => {
-            // [1] 정규화된 키(NormKey)를 사용하여 같은 곡 병합
-            const key = d.NormKey;
-            
-            // 아직 없으면 초기화
-            if(!songs[key]) {
-                songs[key] = { 
-                    title: d.Title, // 화면에는 원본 제목 표시
-                    artist: d.Artist, 
-                    id: d.Video_ID || (d.Artist + "|" + d.Title), 
-                    ranks: {} 
-                };
-            }
-            
-            // 기존 순위보다 더 높으면(작으면) 업데이트 (1위 > 73위)
-            if (!songs[key].ranks[d.Chart] || d.Rank < songs[key].ranks[d.Chart]) {
-                songs[key].ranks[d.Chart] = d.Rank;
-                // 1위 영상 ID 우선 확보
-                if(d.Video_ID) songs[key].id = d.Video_ID; 
-            }
-        });
-        
-        let list = Object.values(songs);
-
-        // [2] 9개 주요 차트에 순위가 하나도 없는 곡(예: Weekly only) 제거
-        list = list.filter(s => {
-            const hasAnyRank = validCharts.some(chartName => s.ranks[chartName]);
-            return hasAnyRank;
-        });
-
-        if(search) list = list.filter(s => s.title.toLowerCase().includes(search) || s.artist.toLowerCase().includes(search));
-        
         const keyArr = ['no', 'info', KEYS.m, KEYS.g, KEYS.sg, KEYS.sk, KEYS.bh, KEYS.b2, KEYS.bg, KEYS.yk, KEYS.yu];
 
+        // 정렬 로직 (기존 유지)
         list.sort((a, b) => {
             let valA, valB;
             const k = keyArr[matrixSortCol];
             
-            if (matrixSortCol === 0) return 0;
-            if (matrixSortCol === 1) { 
-                valA = a.title; valB = b.title; 
-                if(valA < valB) return matrixSortAsc ? -1 : 1;
-                if(valA > valB) return matrixSortAsc ? 1 : -1;
-                return 0;
-            } else { 
-                valA = a.ranks[k] || 9999; 
-                valB = b.ranks[k] || 9999; 
-                if (valA === valB) return 0;
-                return matrixSortAsc ? (valA - valB) : (valB - valA);
-            }
+            if (matrixSortCol === 0) return matrixSortAsc ? 0 : 0; 
+            if (matrixSortCol === 1) { valA = a.title; valB = b.title; }
+            else { valA = a.ranks[k] || 9999; valB = b.ranks[k] || 9999; }
+
+            if(valA < valB) return matrixSortAsc ? -1 : 1;
+            if(valA > valB) return matrixSortAsc ? 1 : -1;
+            return 0;
         });
 
         const rr = (v) => v ? `<span class="matrix-rank">${v}</span>` : `<span class="matrix-null">-</span>`;
         
+        // HTML 렌더링 (디자인 유지)
         document.querySelector("#crossTable tbody").innerHTML = list.map((s, i) => `
             <tr onclick="openDetail('${s.id}')">
                 <td style="font-weight:bold; color:#666; text-align:center;">${i+1}</td>
-                <td style="text-align:center;"><div style="font-weight:bold; color:#000;">${s.title}</div><div style="font-size:0.85rem; color:#666;">${s.artist}</div></td>
+                <td style="text-align:center;">
+                    <div style="font-weight:bold; color:#000;">${s.title}</div>
+                    <div style="font-size:0.85rem; color:#666;">${s.artist}</div>
+                </td>
                 <td>${rr(s.ranks[KEYS.m])}</td><td>${rr(s.ranks[KEYS.g])}</td>
                 <td>${rr(s.ranks[KEYS.sg])}</td><td>${rr(s.ranks[KEYS.sk])}</td>
                 <td>${rr(s.ranks[KEYS.bh])}</td><td>${rr(s.ranks[KEYS.b2])}</td><td>${rr(s.ranks[KEYS.bg])}</td>
@@ -755,7 +750,7 @@
                     backgroundColor: 'rgba(30, 142, 62, 0.1)', 
                     fill: true, 
                     tension: 0.4,
-                    pointRadius: 5,     
+                    pointRadius: 5,      
                     pointHoverRadius: 8 
                 }]
             },
