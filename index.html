@@ -555,7 +555,7 @@
         renderCross();
     }
 
-    // [수정] 통합 랭킹: 아티스트명 정규화(영어 포함시 영어만 추출)로 중복 제거
+    // [수정 완료] 통합 랭킹: 아티스트명 정규화 + 순위 덮어쓰기 방지(최고 순위 유지) 로직 적용
     function renderCross() {
         const search = document.getElementById("crossSearch").value.toLowerCase();
         const targetDate = document.getElementById("crossDate").value; 
@@ -566,7 +566,7 @@
             // 1. 제목 정규화 (공백 제거, 소문자)
             const safeTitle = d.Title.toLowerCase().replace(/\s/g, "");
             
-            // 2. 아티스트 정규화 (핵심 수정 사항)
+            // 2. 아티스트 정규화
             // 영어가 포함된 이름(예: "화사 (HWASA)")이면, 한글/특수문자 제거하고 "hwasa"만 남김
             // 영어가 없으면(예: "임영웅") 그대로 둠
             let safeArtist = d.Artist.toLowerCase().replace(/\s/g, "");
@@ -585,8 +585,16 @@
                     ranks: {} 
                 };
             }
-            // 해당 키에 차트 순위 매핑
-            songs[key].ranks[d.Chart] = d.Rank;
+            
+            // [핵심 수정] 기존에 저장된 순위가 없거나, 새로운 순위(d.Rank)가 더 높을 때(숫자가 작을 때)만 업데이트
+            // 예: 기존 73위, 새로운 데이터 1위 -> 1위로 업데이트
+            // 예: 기존 1위, 새로운 데이터 73위 -> 1위 유지
+            const currentRank = songs[key].ranks[d.Chart];
+            if (!currentRank || d.Rank < currentRank) {
+                songs[key].ranks[d.Chart] = d.Rank;
+                // 만약 1위 데이터라면 해당 영상 ID를 우선 사용 (정확한 링크 연결 위해)
+                if(d.Rank === 1 && d.Video_ID) songs[key].id = d.Video_ID;
+            }
         });
         
         let list = Object.values(songs);
