@@ -538,9 +538,9 @@
             const delta = d.Delta > 0 ? `<span class="rank-up">▲${d.Delta.toLocaleString()}</span>` : (d.Delta < 0 ? `<span class="rank-down">▼${Math.abs(d.Delta).toLocaleString()}</span>` : "-");
             const rev = showRevenue ? `<td class="money-text">₩${d.Revenue.toLocaleString()}</td>` : "";
             
-            // [Fix 1] Escape quotes for onclick to prevent "Shakira Zoo" bug caused by syntax errors
+            // [Fix 3] Encode URI Component to safely handle all characters
             const rawId = d.Video_ID || `${d.Artist}|${d.Title}`;
-            const safeId = rawId.replace(/'/g, "\\'"); 
+            const safeId = encodeURIComponent(rawId);
             
             return `<tr onclick="openDetail('${safeId}')"><td>${d.Chart}</td><td>${d.Rank}</td><td class="song-title">${d.Title}</td><td>${d.Artist}</td><td style="font-weight:bold">${d.Views.toLocaleString()}</td><td>${delta}</td>${rev}</tr>`;
         }).join("") || `<tr><td colspan="7" style="text-align:center; padding:30px;">데이터 없음</td></tr>`;
@@ -564,25 +564,25 @@
         data.forEach(d => {
             const safeTitle = d.Title.toLowerCase().replace(/\s/g, "");
             let safeArtist = d.Artist.toLowerCase().replace(/\s/g, "");
-            if(/[a-z]/.test(safeArtist)) {
-                safeArtist = safeArtist.replace(/[^a-z0-9]/g, "");
-            }
+            if(/[a-z]/.test(safeArtist)) safeArtist = safeArtist.replace(/[^a-z0-9]/g, "");
 
-            const key = safeTitle + "|" + safeArtist;
+            const groupKey = safeTitle + "|" + safeArtist;
 
-            if(!songs[key]) {
-                songs[key] = { 
+            if(!songs[groupKey]) {
+                // [Fix 1] Ensure fallback ID is Artist|Title (matching openDetail expectation)
+                const fallbackId = d.Artist + "|" + d.Title;
+                songs[groupKey] = { 
                     title: d.Title,   
                     artist: d.Artist, 
-                    id: d.Video_ID || key, 
+                    id: d.Video_ID || fallbackId, 
                     ranks: {} 
                 };
             }
             
-            const currentRank = songs[key].ranks[d.Chart];
+            const currentRank = songs[groupKey].ranks[d.Chart];
             if (!currentRank || d.Rank < currentRank) {
-                songs[key].ranks[d.Chart] = d.Rank;
-                if(d.Rank === 1 && d.Video_ID) songs[key].id = d.Video_ID;
+                songs[groupKey].ranks[d.Chart] = d.Rank;
+                if(d.Rank === 1 && d.Video_ID) songs[groupKey].id = d.Video_ID;
             }
         });
         
@@ -599,11 +599,9 @@
         list.sort((a, b) => {
             let valA, valB;
             const k = keyArr[matrixSortCol];
-            
             if (matrixSortCol === 0) return matrixSortAsc ? 0 : 0; 
             if (matrixSortCol === 1) { valA = a.title; valB = b.title; }
             else { valA = a.ranks[k] || 9999; valB = b.ranks[k] || 9999; }
-
             if(valA < valB) return matrixSortAsc ? -1 : 1;
             if(valA > valB) return matrixSortAsc ? 1 : -1;
             return 0;
@@ -612,8 +610,8 @@
         const rr = (v) => v ? `<span class="matrix-rank">${v}</span>` : `<span class="matrix-null">-</span>`;
         
         document.querySelector("#crossTable tbody").innerHTML = list.map((s, i) => {
-             // [Fix 1] Escape quotes
-             const safeId = s.id.replace(/'/g, "\\'");
+             // [Fix 3] Safely encode ID
+             const safeId = encodeURIComponent(s.id);
              return `
             <tr onclick="openDetail('${safeId}')">
                 <td style="font-weight:bold; color:#666; text-align:center;">${i+1}</td>
@@ -661,8 +659,8 @@
         let html = crosses.filter(v => 
             v.title.toLowerCase().includes(search) || v.artist.toLowerCase().includes(search)
         ).map(v => {
-            // [Fix 1] Escape quotes
-            const safeId = v.id.replace(/'/g, "\\'");
+            // [Fix 3] Safely encode ID
+            const safeId = encodeURIComponent(v.id);
             return `<tr onclick="openDetail('${safeId}')">
                 <td class="song-title">${v.title} <span style="font-size:0.85em; color:#666;">(${v.artist})</span></td>
                 <td style="font-weight:bold; color:var(--primary)">${v.charts.length}개</td>
@@ -690,9 +688,9 @@
         scatterChartInst=new Chart(ctx,{type:'scatter',data:{datasets:[{label:'Songs',data:data.filter(x=>x.Delta>0).map(x=>({x:x.Views,y:x.Delta,t:x.Title,r:x.Rank})),backgroundColor:p=>p.raw.r<=10?'#E62117':(p.raw.r<=50?'#1A73E8':'#aaa')}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{type:'logarithmic'}}}}); 
         
         document.querySelector("#rookieTable tbody").innerHTML=data.filter(x=>x.Rank>20&&x.Delta>0).sort((a,b)=>b.Delta-a.Delta).slice(0,10).map(x=>{
-            // [Fix 1] Escape quotes
+            // [Fix 3] Safely encode ID
             const rawId = x.Video_ID||x.Title;
-            const safeId = rawId.replace(/'/g, "\\'");
+            const safeId = encodeURIComponent(rawId);
             return `<tr onclick="openDetail('${safeId}')"><td>${x.Rank}</td><td>${x.Title}</td><td style="color:var(--primary)">+${(x.Delta*shortsPeriod).toLocaleString()}</td></tr>`;
         }).join(""); 
         
@@ -700,32 +698,45 @@
     }
 
     function renderLongRun() { 
-        // [Fix 2] Long Run Logic Change: Use Set to count unique dates
         const m={}; 
         rawData.forEach(d=>{ 
-            const k=d.Video_ID||`${d.Title}|${d.Artist}`; 
-            if(!m[k]) m[k]={dates:new Set(), r:0, t:d.Title, v:k}; 
-            m[k].dates.add(d.Date); // Add date to Set
-            m[k].r+=d.Rank; 
+            // [Fix 1] Ensure consistent fallback ID: Artist|Title
+            const uniqueKey = d.Video_ID || `${d.Artist}|${d.Title}`;
+            const groupKey = d.Video_ID || (d.Title + d.Artist); 
+            
+            if(!m[groupKey]) m[groupKey]={dates:new Set(), r:0, t:d.Title, id:uniqueKey}; 
+            m[groupKey].dates.add(d.Date);
+            m[groupKey].r+=d.Rank; 
         }); 
         
         const z=Object.values(m).map(v=>{
-            const days = v.dates.size; // Count unique days
+            const days = v.dates.size;
             const score = days > 0 ? Math.round(days*1000/(v.r/days)) : 0;
-            return {t:v.t, d:days, s:score, v:v.v};
+            return {t:v.t, d:days, s:score, id:v.id};
         }).sort((a,b)=>b.s-a.s).slice(0,20); 
         
         document.querySelector("#zombieTable tbody").innerHTML=z.map(x=>{
-            // [Fix 1] Escape quotes
-            const safeId = x.v.replace(/'/g, "\\'");
+            // [Fix 3] Safely encode ID
+            const safeId = encodeURIComponent(x.id);
             return `<tr onclick="openDetail('${safeId}')"><td>${x.t}</td><td>${x.d}일</td><td>-</td><td style="color:var(--blue)">${x.s}</td><td>${x.s>=1000?'🧟':'🌱'}</td></tr>`;
         }).join(""); 
     }
     
-    function openDetail(id) { 
+    function openDetail(encodedId) { 
+        // [Fix 2] Clear Modal IMMEDIATELY to prevent ghosting
         document.getElementById("detailModal").style.display="block"; 
-        const rev=document.getElementById('modal-card-rev'); 
         
+        // Reset DOM elements
+        document.getElementById("modalTitle").innerText = "Loading...";
+        document.getElementById("modalArtist").innerText = "-";
+        document.getElementById("mBestRank").innerText = "-";
+        document.getElementById("mPeakView").innerText = "-";
+        document.getElementById("mRevenue").innerText = "-";
+        document.querySelector("#historyTable tbody").innerHTML = "";
+        if(vChart) { vChart.destroy(); vChart = null; }
+        if(rChart) { rChart.destroy(); rChart = null; }
+
+        const rev=document.getElementById('modal-card-rev'); 
         if(showRevenue) {
             rev.style.display='block';
             document.getElementById('th-hist-rev').style.display='';
@@ -734,16 +745,26 @@
             document.getElementById('th-hist-rev').style.display='none';
         }
         
+        // [Fix 3] Decode URI Component
+        const id = decodeURIComponent(encodedId);
+
         let hist;
         if(id.includes("|")){ 
-            const [a,t]=id.split("|"); 
+            // Now ID is guaranteed to be Artist|Title
+            const [a, t] = id.split("|"); 
             const normA = normalizeString(a);
             const normT = normalizeString(t);
             hist=rawData.filter(d=> normalizeString(d.Artist) === normA && normalizeString(d.Title) === normT).sort((a,b)=>new Date(b.Date)-new Date(a.Date)); 
         } 
         else { hist=rawData.filter(d=>d.Video_ID===id).sort((a,b)=>new Date(b.Date)-new Date(a.Date)); } 
         
-        if(!hist.length) return; 
+        if(!hist.length) {
+            document.getElementById("modalTitle").innerText = "데이터 없음";
+            alert("상세 데이터를 찾을 수 없습니다.");
+            closeModal();
+            return; 
+        } 
+        
         const i=hist[0]; 
         document.getElementById("modalTitle").innerText=i.Title; 
         document.getElementById("modalArtist").innerText=i.Artist; 
@@ -758,8 +779,7 @@
         const totalRev=hist.reduce((a,b)=>a+b.Revenue,0); 
         document.getElementById("mRevenue").innerText="₩"+totalRev.toLocaleString(); 
         
-        if(vChart)vChart.destroy(); if(rChart)rChart.destroy(); 
-        
+        // Chart rendering
         const dates=[...new Set(hist.map(d=>d.Date))].sort(); 
         
         const songCharts = [...new Set(hist.map(d => d.Chart))];
