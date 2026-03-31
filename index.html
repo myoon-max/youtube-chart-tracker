@@ -163,7 +163,10 @@
         <div class="card">
             <div class="controls">
                 <div class="control-group"><label>날짜</label><input type="date" id="dailyDate" onchange="renderDaily()"></div>
-                <div class="control-group"><label>국가</label><select id="countryFilter" onchange="updateChartFilter()"><option value="ALL">전체 (Global)</option><option value="KR">🇰🇷 한국</option><option value="US">🇺🇸 미국</option></select></div>
+                <div class="control-group"><label>국가</label><select id="countryFilter" onchange="updateChartFilter()"><option value="ALL">전체 (Global)</option>
+    <option value="KR">🇰🇷 한국</option>
+    <option value="US">🇺🇸 미국</option>
+    <option value="EG">🇪🇬 이집트</option>      <option value="SA">🇸🇦 사우디아라비아</option> </select></div>
                 <div class="control-group"><label>차트</label><select id="chartFilter" onchange="renderDaily()"><option value="ALL">전체 차트</option></select></div>
                 <div class="search-wrapper"><span class="search-icon">🔍</span><input type="text" id="dailySearch" placeholder="곡명 / 아티스트 검색..." onkeyup="renderDaily()"></div>
             </div>
