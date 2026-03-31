@@ -30,6 +30,8 @@ TARGET_URLS = {
     "US_Daily_Trending": "https://charts.youtube.com/charts/TrendingVideos/us/RightNow",
     "KR_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/daily",
     "US_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/daily",
+    "EG_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/eg/daily",
+    "SA_Daily_Top_MV": "https://charts.youtube.com/charts/TopVideos/sa/daily",
     "KR_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/kr/weekly",
     "US_Weekly_Top_MV": "https://charts.youtube.com/charts/TopVideos/us/weekly",
     "KR_Weekly_Top_Songs": "https://charts.youtube.com/charts/TopSongs/kr/weekly",
