@@ -348,6 +348,7 @@ def scrape_genie():
     except Exception as e: print(f"❌ Genie Error: {e}")
     return data
 
+
 # 5. Kworb (HTML 날짜 파싱 유지 - 스크린샷 요청 반영)
 def scrape_kworb(chart_key, url):
     print(f"🟢 Scraping {chart_key}...")
