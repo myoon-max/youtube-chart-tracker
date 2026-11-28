@@ -26,9 +26,19 @@ YOUTUBE_API_KEY = "AIzaSyDFFZNYygA85qp5p99qUG2Mh8Kl5qoLip4"
 
 # 3. 브라우저/재시도 설정
 PAGE_LOAD_TIMEOUT_SECONDS = 60   # 한 페이지 로드에 걸 수 있는 최대 시간(무한 대기 방지)
-YT_ROW_WAIT_SECONDS = 25        # 한 번의 시도에서 차트 테이블(ytmc-entry-row)을 기다리는 시간
-YT_MAX_ATTEMPTS = 3             # 최초 1회 + 페이지 새로고침 1회 + 드라이버 재시작 1회
+YT_ROW_WAIT_SECONDS = 35        # 한 번의 시도에서 차트 테이블(ytmc-entry-row)을 기다리는 시간 (reCAPTCHA 검증 후 렌더링 여유)
+YT_MAX_ATTEMPTS = 2             # 최초 1회 + 같은 세션으로 재접속 1회 (드라이버 재시작은 '죽었을 때'만)
 YT_DEFAULT_TITLE = "YouTube Music Charts"   # 차트 SPA가 안 그려졌을 때의 기본 타이틀
+
+# headless 크롬은 UA에 'HeadlessChrome/...'을 남긴다. charts.youtube.com은 이를
+# 봇 신호로 보고 reCAPTCHA 챌린지를 띄워 차트 데이터를 주지 않으므로 'Chrome/...'으로 바꾼다.
+# (버전은 항상 실행 중인 실제 크롬을 그대로 따른다. CDP를 못 쓰는 환경의 대체 UA만 고정)
+FALLBACK_USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+ACCEPT_LANGUAGE = "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
+
+# navigator.webdriver=true 도 자동화 신호라서 지운다.
+WEBDRIVER_HIDE_JS = "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
 
 # 4. 크롤링 대상 URL
 TARGET_URLS = {
@@ -91,33 +101,95 @@ def parse_count_strict(text):
 def clean_text(text):
     return re.sub(r'\s+', ' ', text).strip()
 
-def get_driver():
-    chrome_options = Options()
-    
-    # [핵심 수정] Github Actions에서는 무조건 headless 켜야 함
-    chrome_options.add_argument("--headless=new") 
-    
-    # [핵심 수정] 유튜브 봇 탐지 우회 옵션 추가
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--lang=en-US")
+def clean_user_agent(ua):
+    """headless 크롬 UA에서 봇 신호('HeadlessChrome')를 지운다.
+
+    'Mozilla/5.0 ... HeadlessChrome/131.0.6778.85 Safari/537.36'
+    → 'Mozilla/5.0 ... Chrome/131.0.6778.85 Safari/537.36'
+    버전은 건드리지 않으므로 실행 중인 실제 크롬과 항상 일치한다.
+    """
+    if not ua:
+        return ""
+    return re.sub(r'HeadlessChrome/', 'Chrome/', str(ua))
+
+
+def apply_stealth(driver):
+    """드라이버에 스텔스 설정을 적용한다 (UA 정리 + webdriver 플래그 숨김).
+
+    적용한 UA 문자열을 돌려주고, UA 오버라이드까지 실패하면 None을 돌려준다.
+    (호출한 쪽이 fallback UA로 드라이버를 다시 띄우는 판단을 할 수 있게 한다)
+    """
+    try:
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument",
+                               {"source": WEBDRIVER_HIDE_JS})
+    except Exception as e:
+        print(f"   ⚠️ webdriver 플래그 숨김 실패(계속 진행): {e}")
+
+    try:
+        current_ua = driver.execute_script("return navigator.userAgent;")
+    except Exception:
+        current_ua = ""
+
+    ua = clean_user_agent(current_ua)
+    if not ua:
+        ua = FALLBACK_USER_AGENT
+        print("   ⚠️ 브라우저 UA를 읽지 못해 fallback UA를 사용")
+
+    try:
+        driver.execute_cdp_cmd("Network.setUserAgentOverride",
+                               {"userAgent": ua, "acceptLanguage": ACCEPT_LANGUAGE})
+    except Exception as e:
+        print(f"   ⚠️ UA 오버라이드 실패: {e}")
+        return None
+
+    print(f"   🕶️ UA 적용: {ua}")
+    return ua
+
+
+def chrome_options(user_agent=None):
+    """크롬 실행 옵션. user_agent를 주면 커맨드라인 옵션으로 UA를 고정한다(CDP fallback용)."""
+    options = Options()
+
+    # Github Actions에서는 무조건 headless 켜야 함
+    options.add_argument("--headless=new")
+
+    # 유튜브 봇 탐지 우회 옵션
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--lang=en-US")
     # 자동화 제어 메시지 제거 (봇 탐지 회피)
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled") 
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    if user_agent:
+        options.add_argument(f"--user-agent={user_agent}")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    return options
 
-    # User-Agent를 Chrome/115.0.0.0으로 고정하던 설정은 제거했다.
-    # 실제 크롬 버전과 어긋난 구형 UA로 요청하면 charts.youtube.com이 차트 SPA를
-    # 그리지 않고 'YouTube Music Charts' 기본 타이틀에 머문 채 reCAPTCHA 단계에서
-    # 멈춰, 테이블(ytmc-entry-row)이 0개로 남았다. --headless=new는 실제 브라우저
-    # 버전의 UA를 그대로 쓰므로 별도 지정이 필요 없다.
 
+def get_driver():
+    # User-Agent는 옵션으로 고정하지 않는다. 구형 Chrome/115.0.0.0으로 고정하면 실제
+    # 브라우저 버전과 어긋나 봇 신호가 되고, 반대로 아무것도 하지 않으면 --headless=new의
+    # UA에 'HeadlessChrome/...'이 그대로 노출된다. 둘 다 charts.youtube.com의 reCAPTCHA
+    # 챌린지를 부르므로, 드라이버를 띄운 뒤 apply_stealth()에서 실제 UA를 읽어
+    # 'HeadlessChrome'만 지우고 CDP로 덮어쓴다.
     service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver = webdriver.Chrome(service=service, options=chrome_options())
     # chromedriver가 응답 없이 120초씩 매달리는 경우가 있어 페이지 로드에 상한을 둔다.
     driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT_SECONDS)
+
+    if apply_stealth(driver) is None:
+        # CDP 호출이 막힌 환경: 커맨드라인 옵션으로 fallback UA를 넣어 한 번 더 띄운다.
+        try:
+            driver.quit()
+        except Exception:
+            pass
+        print("   ⚠️ CDP UA 적용 실패 → 고정 Chrome UA로 드라이버를 다시 띄운다")
+        driver = webdriver.Chrome(service=service, options=chrome_options(FALLBACK_USER_AGENT))
+        driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT_SECONDS)
+        apply_stealth(driver)
+
     return driver
 
 # ================= 유튜브 API & 파싱 =================
@@ -284,11 +356,11 @@ def _scroll_yt_chart(driver, max_rounds=12, pause=0.4):
     driver.execute_script("window.scrollTo(0, 0);")
 
 class DriverSession:
-    """Selenium 드라이버 한 개를 들고 있다가, 필요하면 새로 띄운다.
+    """Selenium 드라이버 한 개를 들고 있다가, 죽었을 때만 새로 띄운다.
 
-    ChromeDriver가 응답을 멈추는 경우가 있어 차트 로딩이 계속 실패하면
-    드라이버를 재시작한다. 재시작하면 참조가 바뀌므로 각 차트는 항상
-    session.driver에서 현재 드라이버를 얻어 쓴다.
+    차트 로딩은 0행이어도 같은 드라이버(=같은 쿠키/reCAPTCHA 세션)로 재시도한다.
+    재시작은 드라이버가 응답하지 않을 때뿐이고, 재시작하면 참조가 바뀌므로
+    각 차트는 항상 session.driver에서 현재 드라이버를 얻어 쓴다.
     """
 
     def __init__(self, driver_factory=None):
@@ -323,22 +395,44 @@ def _open_page(driver, url):
         return False
 
 
-def _reload_page(driver, url):
-    """새로고침. 드라이버가 새로고침을 못 하면 주소로 다시 연다."""
+def _driver_title(driver):
+    """드라이버가 아직 응답하는지 확인하며 타이틀을 읽는다. 응답이 없으면 None."""
     try:
-        driver.refresh()
-        return True
+        return driver.title
     except Exception:
-        return _open_page(driver, url)
+        return None
+
+
+def _recaptcha_challenge_present(driver):
+    """차트 대신 reCAPTCHA 챌린지 패널이 떠 있는지 확인한다(로그용).
+
+    charts.youtube.com은 봇으로 판단하면 차트 대신 reCAPTCHA Enterprise 챌린지를
+    띄우고 데이터 요청 자체를 하지 않는다. 0행 로그만 보면 UA 문제인지 챌린지인지
+    구분할 수 없어서, 실패 원인을 남기기 위해 확인만 한다(동작에는 영향 없음).
+    """
+    script = (
+        "var fs = document.querySelectorAll('iframe[src*=\"recaptcha\"]');"
+        "for (var i = 0; i < fs.length; i++) {"
+        "  var s = fs[i].getAttribute('src') || '';"
+        "  if (s.indexOf('bframe') >= 0 && (fs[i].offsetWidth || fs[i].offsetHeight)) return true;"
+        "}"
+        "return false;"
+    )
+    try:
+        return bool(driver.execute_script(script))
+    except Exception:
+        return False
 
 
 def _load_yt_chart(chart_name, url, session, attempts=YT_MAX_ATTEMPTS):
     """차트 페이지를 열고 ytmc-entry-row가 그려질 때까지 기다린다.
 
-    charts.youtube.com은 reCAPTCHA 검증 뒤에 데이터가 붙어서, 25초 안에 테이블이
-    그려지지 않는 경우가 있다(예전에는 그대로 0행 처리하고 포기했다).
-    그래서 (1) 페이지를 새로고침해 한 번 더 기다리고,
-    (2) 마지막에는 드라이버를 재시작해 마지막으로 한 번 더 시도한다.
+    charts.youtube.com은 reCAPTCHA 검증 뒤에 데이터가 붙어서 35초 안에 테이블이
+    그려지지 않는 경우가 있다. 그래서 (1) 첫 시도에서 35초 기다리고,
+    (2) 실패하면 같은 세션으로 URL을 한 번 더 열어 35초 더 기다린다.
+
+    실패할 때마다 드라이버를 새로 띄우면 어렵게 통과한 reCAPTCHA 쿠키/세션까지
+    날아가고 실행 시간만 늘어나므로, 드라이버가 실제로 죽은 경우에만 1회 재시작한다.
 
     반환: (사용한 driver, row_count). row_count가 0이면 끝까지 실패한 것이다.
     """
@@ -350,20 +444,22 @@ def _load_yt_chart(chart_name, url, session, attempts=YT_MAX_ATTEMPTS):
             return None, 0
 
     driver = session.driver
+    restarted = False
+
     for attempt in range(1, attempts + 1):
-        if attempt == 1:
-            _open_page(driver, url)
-        elif attempt == attempts:
-            # 마지막 수단: 브라우저 자체를 새로 띄운다.
+        opened = _open_page(driver, url)
+        if not opened and _driver_title(driver) is None:
+            # 페이지 열기도, 타이틀 조회도 안 되면 드라이버가 죽은 것으로 본다.
+            if restarted:
+                return driver, 0
             try:
                 driver = session.restart()
+                restarted = True
             except Exception as e:
                 print(f"   ❌ 드라이버 재시작 실패: {e}")
                 return driver, 0
-            _open_page(driver, url)
-        else:
-            print(f"   🔄 재시도 {attempt - 1}: 페이지 새로고침")
-            _reload_page(driver, url)
+            if not _open_page(driver, url):
+                return driver, 0
 
         row_count = _wait_for_yt_rows(driver)
         if row_count:
@@ -371,15 +467,15 @@ def _load_yt_chart(chart_name, url, session, attempts=YT_MAX_ATTEMPTS):
                 print(f"   ✅ 재시도 {attempt - 1}회 후 로드: rows={row_count}")
             return driver, row_count
 
-        try:
-            title = driver.title
-        except Exception:
-            title = "(unknown)"
+        title = _driver_title(driver)
+        challenge = " · reCAPTCHA 챌린지 표시됨" if _recaptcha_challenge_present(driver) else ""
         # 기본 타이틀에 머물러 있으면 차트 SPA가 아직 안 그려진 것이다.
         if str(title).strip() == YT_DEFAULT_TITLE:
-            print(f"   ⚠️ 시도 {attempt}/{attempts}: 차트 테이블 0개 · 기본 타이틀 유지('{title}') / URL: {url}")
+            print(f"   ⚠️ 시도 {attempt}/{attempts}: 차트 테이블 0개 · 기본 타이틀 유지('{title}'){challenge} / URL: {url}")
         else:
-            print(f"   ⚠️ 시도 {attempt}/{attempts}: 차트 테이블 0개. Page Title: {title} / URL: {url}")
+            print(f"   ⚠️ 시도 {attempt}/{attempts}: 차트 테이블 0개. Page Title: {title}{challenge} / URL: {url}")
+        if attempt < attempts:
+            print(f"   🔄 재시도 {attempt}: 같은 세션으로 URL 다시 열기")
 
     return driver, 0
 

@@ -9,7 +9,6 @@
 import json
 import os
 import sys
-import types
 import unittest
 from unittest import mock
 
@@ -190,20 +189,28 @@ class ShortsParserTest(unittest.TestCase):
 class FakeDriver:
     """Selenium 드라이버 대신 execute_script 결과만 돌려주는 테스트용 객체.
 
-    row_counts를 주면 페이지를 열 때마다(get/refresh) 그 순서대로 행 수가 바뀐다.
-    (예: [0, 100] = 첫 로드 0행, 새로고침 후 100행)
+    row_counts를 주면 페이지를 열 때마다(get) 그 순서대로 행 수가 바뀐다.
+    (예: [0, 100] = 첫 로드 0행, 재접속 후 100행)
+    dead_on_loads에 로드 번호를 넣으면 그 로드에서 드라이버가 죽은 것처럼 예외를 낸다.
     """
 
-    def __init__(self, payload, row_count=100, row_counts=None):
+    def __init__(self, payload, row_count=100, row_counts=None, dead_on_loads=()):
         self.payload = payload
         self.row_count = row_count
         self.row_counts = list(row_counts or [])
-        self.title = "YouTube Music Charts"
+        self.dead_on_loads = set(dead_on_loads)
+        self.dead = False
+        self._title = "YouTube Music Charts"
         self.current_url = "https://charts.youtube.com/..."
         self.scripts = []
         self.loads = 0
-        self.refreshes = 0
         self.quit_called = False
+
+    @property
+    def title(self):
+        if self.dead:
+            raise RuntimeError("invalid session id")
+        return self._title
 
     def _advance_rows(self):
         if self.row_counts:
@@ -212,10 +219,9 @@ class FakeDriver:
     def get(self, url):
         self.loads += 1
         self.current_url = url
-        self._advance_rows()
-
-    def refresh(self):
-        self.refreshes += 1
+        if self.loads in self.dead_on_loads:
+            self.dead = True
+            raise RuntimeError("invalid session id")
         self._advance_rows()
 
     def quit(self):
@@ -234,10 +240,14 @@ class FakeDriver:
 
 
 class FakeSession:
-    """DriverSession 대신 쓰는 테스트용 세션. 재시작 횟수를 기록한다."""
+    """DriverSession 대신 쓰는 테스트용 세션. 재시작 횟수를 기록한다.
 
-    def __init__(self, driver):
+    fresh를 주면 재시작 시 그 드라이버로 갈아탄다(죽은 드라이버 → 산 드라이버).
+    """
+
+    def __init__(self, driver, fresh=None):
         self.driver = driver
+        self.fresh = fresh
         self.restarts = 0
         self.started = 0
 
@@ -247,6 +257,8 @@ class FakeSession:
 
     def restart(self):
         self.restarts += 1
+        if self.fresh is not None:
+            self.driver = self.fresh
         return self.driver
 
     def close(self):
@@ -355,64 +367,186 @@ class ViewsHeaderTest(unittest.TestCase):
 
 
 class RetryTest(unittest.TestCase):
-    """차트 테이블이 0행일 때 바로 포기하지 않고 새로고침·드라이버 재시작으로 재시도한다."""
+    """0행일 때 드라이버를 갈아치우지 않고 같은 세션(쿠키)으로 한 번 더 시도한다."""
 
-    def run_scrape(self, row_counts, chart="KR_Daily_Top_MV"):
-        payload = load_fixture("ytmc_v2_topvideos_kr_daily.json")["payload"]
+    FIXTURE = "ytmc_v2_topvideos_kr_daily.json"
+
+    def run_scrape(self, row_counts, session=None):
+        payload = load_fixture(self.FIXTURE)["payload"]
         driver = FakeDriver(payload, row_counts=row_counts)
-        session = FakeSession(driver)
+        session = session or FakeSession(driver)
         with mock.patch.object(main, "time", FastTime()):
-            rows = main.scrape_youtube_chart(chart, "https://charts.youtube.com/x", session)
+            rows = main.scrape_youtube_chart("KR_Daily_Top_MV", "https://charts.youtube.com/x", session)
         return rows, driver, session
 
-    def test_refreshes_once_then_succeeds(self):
+    def test_retries_with_same_session(self):
         rows, driver, session = self.run_scrape([0, 100])
         self.assertEqual(len(rows), 4)
         self.assertEqual(rows[0]["Views"], 739305)
-        self.assertEqual((driver.loads, driver.refreshes, session.restarts), (1, 1, 0))
+        # 두 번 째 시도는 재시작이 아니라 같은 드라이버로 URL을 다시 여는 것
+        self.assertEqual((driver.loads, session.restarts), (2, 0))
 
-    def test_restarts_driver_on_last_attempt(self):
-        rows, driver, session = self.run_scrape([0, 0, 100])
-        self.assertEqual(len(rows), 4)
-        self.assertEqual((driver.loads, driver.refreshes, session.restarts), (2, 1, 1))
-
-    def test_gives_up_after_all_attempts(self):
-        rows, driver, session = self.run_scrape([0, 0, 0])
+    def test_no_driver_restart_when_rows_never_appear(self):
+        rows, driver, session = self.run_scrape([0, 0])
         self.assertEqual(rows, [])
-        self.assertEqual((driver.loads, driver.refreshes, session.restarts), (2, 1, 1))
+        self.assertEqual((driver.loads, session.restarts), (2, 0))
+
+    def test_restarts_only_when_driver_is_dead(self):
+        payload = load_fixture(self.FIXTURE)["payload"]
+        dead = FakeDriver(payload, dead_on_loads={1})
+        fresh = FakeDriver(payload, row_counts=[100])
+        session = FakeSession(dead, fresh=fresh)
+        with mock.patch.object(main, "time", FastTime()):
+            rows = main.scrape_youtube_chart("KR_Daily_Top_MV", "https://charts.youtube.com/x", session)
+        self.assertEqual(len(rows), 4)
+        self.assertEqual((dead.loads, fresh.loads, session.restarts), (1, 1, 1))
+        self.assertIs(session.driver, fresh)
+
+    def test_gives_up_when_driver_keeps_dying(self):
+        payload = load_fixture(self.FIXTURE)["payload"]
+        dead = FakeDriver(payload, dead_on_loads={1})
+        dead_again = FakeDriver(payload, dead_on_loads={1})
+        session = FakeSession(dead, fresh=dead_again)
+        with mock.patch.object(main, "time", FastTime()):
+            rows = main.scrape_youtube_chart("KR_Daily_Top_MV", "https://charts.youtube.com/x", session)
+        self.assertEqual(rows, [])
+        self.assertEqual(session.restarts, 1)
+
+
+class StealthTest(unittest.TestCase):
+    """HeadlessChrome 노출 제거·webdriver 플래그 숨김 로직."""
+
+    def test_clean_user_agent_strips_headless_marker(self):
+        ua = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+              "HeadlessChrome/131.0.6778.85 Safari/537.36")
+        cleaned = main.clean_user_agent(ua)
+        self.assertNotIn("HeadlessChrome", cleaned)
+        self.assertIn("Chrome/131.0.6778.85", cleaned)
+        self.assertEqual(cleaned, ua.replace("HeadlessChrome/", "Chrome/"))
+
+    def test_clean_user_agent_leaves_normal_ua_alone(self):
+        ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/131.0.0.0 Safari/537.36")
+        self.assertEqual(main.clean_user_agent(ua), ua)
+
+    def test_clean_user_agent_handles_empty(self):
+        self.assertEqual(main.clean_user_agent(""), "")
+        self.assertEqual(main.clean_user_agent(None), "")
+
+    def test_constants_match_tuning(self):
+        # reCAPTCHA 검증 후 렌더링을 기다리는 시간, 재시도 횟수
+        self.assertEqual(main.YT_ROW_WAIT_SECONDS, 35)
+        self.assertEqual(main.YT_MAX_ATTEMPTS, 2)
+
+    def test_recaptcha_challenge_detection(self):
+        class ChallengeDriver:
+            def __init__(self, value):
+                self.value = value
+
+            def execute_script(self, script, *args):
+                return self.value
+
+        self.assertTrue(main._recaptcha_challenge_present(ChallengeDriver(True)))
+        self.assertFalse(main._recaptcha_challenge_present(ChallengeDriver(False)))
+
+        class BrokenDriver:
+            def execute_script(self, script, *args):
+                raise RuntimeError("session deleted")
+
+        self.assertFalse(main._recaptcha_challenge_present(BrokenDriver()))
 
 
 class DriverOptionsTest(unittest.TestCase):
-    """구형 User-Agent 고정이 다시 들어오지 않도록 한다."""
+    """구형 UA 고정 없이, 실제 UA에서 HeadlessChrome만 지워 CDP로 적용한다."""
 
-    def test_no_stale_user_agent(self):
-        captured = {}
+    def run_get_driver(self, navigator_ua, cdp_error=None):
+        captured = {"drivers": [], "options": []}
 
         class FakeOptions:
             def __init__(self):
-                self.args = []
+                self.arguments = []
                 self.experimental = {}
+                captured["options"].append(self)
 
             def add_argument(self, arg):
-                self.args.append(arg)
+                self.arguments.append(arg)
 
             def add_experimental_option(self, key, value):
                 self.experimental[key] = value
 
-        fake_options = FakeOptions()
-        fake_driver = types.SimpleNamespace(
-            set_page_load_timeout=lambda seconds: captured.update(timeout=seconds)
-        )
+        class FakeWebDriver:
+            def __init__(self):
+                self.timeout = None
+                self.cdp = []
+                self.quit_called = False
+                captured["drivers"].append(self)
 
-        with mock.patch.object(main, "Options", lambda: fake_options), \
+            def set_page_load_timeout(self, seconds):
+                self.timeout = seconds
+
+            def execute_script(self, script, *args):
+                if "navigator.userAgent" in script:
+                    if navigator_ua is None:
+                        raise RuntimeError("no ua")
+                    return navigator_ua
+                return None
+
+            def execute_cdp_cmd(self, cmd, params):
+                self.cdp.append((cmd, params))
+                if cdp_error and cmd == "Network.setUserAgentOverride":
+                    raise RuntimeError(cdp_error)
+
+            def quit(self):
+                self.quit_called = True
+
+        with mock.patch.object(main, "Options", FakeOptions), \
                 mock.patch.object(main, "Service", lambda *a, **k: None), \
-                mock.patch.object(main, "ChromeDriverManager", lambda *a, **k: mock.Mock(install=lambda: "chromedriver")), \
-                mock.patch.object(main.webdriver, "Chrome", lambda service=None, options=None: fake_driver):
-            main.get_driver()
+                mock.patch.object(main, "ChromeDriverManager",
+                                  lambda *a, **k: mock.Mock(install=lambda: "chromedriver")), \
+                mock.patch.object(main.webdriver, "Chrome", lambda service=None, options=None: FakeWebDriver()):
+            driver = main.get_driver()
 
-        self.assertEqual([a for a in fake_options.args if "user-agent" in a.lower()], [])
-        self.assertIn("--headless=new", fake_options.args)
-        self.assertEqual(captured["timeout"], main.PAGE_LOAD_TIMEOUT_SECONDS)
+        return driver, captured
+
+    def ua_override(self, driver):
+        for cmd, params in driver.cdp:
+            if cmd == "Network.setUserAgentOverride":
+                return params
+        return None
+
+    def test_applies_clean_user_agent_over_cdp(self):
+        ua = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+              "HeadlessChrome/131.0.6778.85 Safari/537.36")
+        driver, captured = self.run_get_driver(ua)
+
+        params = self.ua_override(driver)
+        self.assertIsNotNone(params)
+        self.assertNotIn("HeadlessChrome", params["userAgent"])
+        self.assertIn("Chrome/131.0.6778.85", params["userAgent"])
+        self.assertEqual(params["acceptLanguage"], main.ACCEPT_LANGUAGE)
+
+        # webdriver 플래그도 페이지 로드 전에 숨긴다.
+        self.assertIn("Page.addScriptToEvaluateOnNewDocument", [c for c, _ in driver.cdp])
+        self.assertEqual(driver.timeout, main.PAGE_LOAD_TIMEOUT_SECONDS)
+
+        # 정상 경로에서는 UA를 커맨드라인 옵션으로 고정하지 않는다.
+        args = captured["options"][0].arguments
+        self.assertEqual([a for a in args if "user-agent" in a.lower()], [])
+        self.assertIn("--headless=new", args)
+
+    def test_falls_back_to_fixed_ua_when_navigator_ua_unavailable(self):
+        driver, _ = self.run_get_driver(None)
+        params = self.ua_override(driver)
+        self.assertEqual(params["userAgent"], main.FALLBACK_USER_AGENT)
+        self.assertNotIn("HeadlessChrome", params["userAgent"])
+
+    def test_recreates_driver_with_ua_option_when_cdp_blocked(self):
+        driver, captured = self.run_get_driver("Mozilla/5.0 HeadlessChrome/131.0.6778.85", cdp_error="not implemented")
+        self.assertEqual(len(captured["drivers"]), 2)
+        self.assertTrue(captured["drivers"][0].quit_called)
+        second_args = captured["options"][1].arguments
+        self.assertIn(f"--user-agent={main.FALLBACK_USER_AGENT}", second_args)
+        self.assertIs(driver, captured["drivers"][1])
 
 
 if __name__ == "__main__":
